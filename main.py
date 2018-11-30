@@ -14,16 +14,19 @@ def build_gaussian(img, L):
     return img_arr
 
 
+def get_segmentation_mask(mode):
+    return np.ones((SIZEX, SIZEY))
+
+
 def main():
-    content = cv2.resize(io.imread('ocean_day.jpg'), (SIZEX, SIZEY)) / 255.0
-    style = cv2.resize(io.imread('autumn.jpg'), (SIZEX, SIZEY)) / 255.0
-    show_images([content, style, color_transfer_lab(content, style), color_transfer_hm(content, style)])
+    content = cv2.resize(io.imread('images/ocean_day.jpg'), (SIZEX, SIZEY)) / 255.0
+    style = cv2.resize(io.imread('images/autumn.jpg'), (SIZEX, SIZEY)) / 255.0
+    show_images([content, style, color_transfer_lab(content, style)])
     content = color_transfer_lab(content, style)
-    segmentation_mask = np.ones((SIZEX, SIZEY))
+    segmentation_mask = get_segmentation_mask(None)
     content_arr = build_gaussian(content, LMAX)
     style_arr = build_gaussian(style, LMAX)
     # prepare NN
-    show_images(content_arr)
-    show_images(style_arr)
+
 
 main()
