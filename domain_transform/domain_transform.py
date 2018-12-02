@@ -1,6 +1,6 @@
 import skimage.io as io
 import numpy as np
-from commonfunctions import *
+from .commonfunctions import *
 import cv2
 
 
@@ -61,4 +61,4 @@ def main():
     denoised_img = denoise(img)
     show_images([img, img_bilateral, denoised_img])
 
-main()
+# main()
