@@ -6,8 +6,8 @@ from sklearn.feature_extraction.image import extract_patches
 from sklearn.neighbors import NearestNeighbors
 LMAX = 3
 IM_SIZE = 400
-PATCH_SIZES = np.array([33, 21, 13])
-SAMPLING_GAPS = np.array([28, 18, 8])
+PATCH_SIZES = np.array([33, 21, 13, 9])
+SAMPLING_GAPS = np.array([28, 18, 8, 5])
 IALG = 10
 IRLS_it = 3
 IRLS_r = 0.8
@@ -94,7 +94,10 @@ def style_transfer(content, style, segmentation_mask):
             npatches = npatchx * npatchy
             # print("Preparing for NN")
             style_patches = style_patches.reshape(-1, p_size * p_size * 3)
-            neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='ball_tree').fit(style_patches)
+            njobs = 1
+            if (L == 0) or (L == 1 and p_size <= 13):
+                njobs = -1
+            neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='ball_tree', n_jobs=njobs).fit(style_patches)
             for k in range(IALG):  # over # of algorithm iterations IALG
                 # Steps 1 & 2: Patch-Matching and and Robust Patch Aggregation
                 X_patches_raw = extract_patches(X, patch_shape=(p_size, p_size, 3), extraction_step=SAMPLING_GAPS[n])
