@@ -29,7 +29,7 @@ def color_transfer_hm(content, style):
     # calculate the mean
     content_mu = np.mean(content, axis=(0, 1))
     style_mu = np.mean(content, axis=(0, 1))
-    print(style.reshape(-1, 3).shape)
+    # print(style.reshape(-1, 3).shape)
     # calculate the covariance
     style_cov = np.cov(style.reshape(-1, 3).T)
     content_cov = np.cov(content.reshape(-1, 3).T)
