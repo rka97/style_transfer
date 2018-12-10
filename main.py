@@ -1,4 +1,4 @@
-import cv2
+import cv2 as cv2
 from color_transfer.commonfunctions import *
 from color_transfer.color_transfer import *
 from domain_transform.domain_transform import *
@@ -18,17 +18,6 @@ IRLS_it = 3
 IRLS_r = 0.8
 
 
-# Computes np.sum(A * B, axis=0)
-def SumOfProduct(A, B, num_times=1):
-    sx, sy = A.shape
-    C = np.zeros(sy, dtype=np.float32)
-    # do it over 4 times
-    step = int(sx / num_times)
-    for i in range(0, sx, step):
-        C += np.sum(A[i:i + step, :] * B[i:i + step, :], axis=0)
-    return C
-
-
 def build_gaussian_pyramid(img, L):
     img_arr = []
     img_arr.append(img)  # D_L (img) = img
@@ -37,17 +26,34 @@ def build_gaussian_pyramid(img, L):
     return img_arr
 
 
+def segment_edges(img):
+    return 4
+
+
+def segment_faces(img):
+    face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+    gray_img = (rgb2gray(img) * 255).astype(np.uint8)
+    show_images([gray_img])
+    faces = face_cascade.detectMultiScale(gray_img, 1.3, 5)
+    if len(faces) == 0:
+        print("Found no faces.")
+    for (x, y, w, h) in faces:
+        print(x, y, w, h)
+        cv2.rectangle(gray_img, (x, y), (x + w, y + h), (255, 0, 0), -1)
+    return gray_img / 255.0
+
+
 def get_segmentation_mask(mode, img=None, c=1.0):
     if mode == 'none' or mode is None or img is None:
         return np.ones((IM_SIZE, IM_SIZE), dtype=np.float32) * c
-    else:
-        if mode == 'edge':
-            edge = (canny(rgb2gray(img), sigma=0.5, low_threshold=0.0, high_threshold=0.3) * 1.0).astype(np.float32)
-            return binary_fill_holes(edge)
-        elif mode == 'vese':
-            segm = 1 - chan_vese(rgb2gray(img))
-            return (segm * 1.0).astype(np.float32)
-
+    elif mode == 'edge':
+        edge = (canny(rgb2gray(img), sigma=0.5, low_threshold=0.0, high_threshold=0.3) * 1.0).astype(np.float32)
+        return binary_fill_holes(edge)
+    elif mode == 'face':
+        return segment_faces(img)
+    elif mode == 'vese':
+        segm = 1 - chan_vese(rgb2gray(img))
+        return (segm * 1.0).astype(np.float32)
 
 
 def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors):
@@ -72,12 +78,10 @@ def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors):
     for t1 in range(X_patches_raw.shape[0]):
         for t2 in range(X_patches_raw.shape[1]):
             nearest_neighbor = np.reshape(style_patches[indices[t, 0]], (p_size, p_size, 3))
-            # show_images([Xp[t1, t2, 0, :, :, :], nearest_neighbor])
             X_patches_raw[t1, t2, 0, :, :, :] += nearest_neighbor * weights[t]
             Rp[t1, t2, 0, :, :, :] += 1 * weights[t]
             t = t + 1
-    R += 0.0001
-    #R[np.abs(R) < 0.001] = 0.001
+    R += 0.0001  # to avoid dividing by zero.
     X /= R
 
 
@@ -114,6 +118,7 @@ def style_transfer(content, style, segmentation_mask):
             if (L == 0) or (L == 1 and p_size <= 13):
                 njobs = -1
             neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='brute', n_jobs=njobs).fit(style_patches)
+            style_patches = style_patches.reshape((-1, p_size, p_size, 3))
             for k in range(IALG):  # over # of algorithm iterations IALG
                 # Steps 1 & 2: Patch-Matching and and Robust Patch Aggregation
                 X_patches_raw = extract_patches(X, patch_shape=(p_size, p_size, 3), extraction_step=SAMPLING_GAPS[n])
@@ -137,20 +142,21 @@ def style_transfer(content, style, segmentation_mask):
 
 
 def main():
-    content = cv2.resize(io.imread('images/houses.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
-    content = content.astype(np.float32)[:, :, 0:3]
+    content = io.imread('images/emilia2.jpg') / 255.0
+    style = io.imread('images/van_gogh.jpg') / 255.0
+    segm_mask = get_segmentation_mask('face', content, 0.0)
+    content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
+    style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
+    segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
+    show_images([content, segm_mask, style])
     # content[:] = 0.0
     # print(content.shape)
-    style = cv2.resize(io.imread('images/van_gogh.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
-    style = style.astype(np.float32)
     content = imhistmatch(content, style)
-    segmentation_mask = get_segmentation_mask('none', content, 1)
-    show_images([content, segmentation_mask, style])
     start = timer()
-    X = style_transfer(content, style, segmentation_mask)
+    X = style_transfer(content, style, segm_mask)
     end = timer()
     print("Style Transfer took ", end - start, " seconds!")
     # Finished. Just show the images
-    show_images([content, segmentation_mask, style, X])
+    show_images([content, segm_mask, style, X])
 
 main()
