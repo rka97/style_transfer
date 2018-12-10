@@ -27,13 +27,12 @@ def build_gaussian_pyramid(img, L):
 
 
 def segment_edges(img):
-    return 4
+    return 4  # 100% edge segmentation
 
 
 def segment_faces(img):
     face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
     gray_img = (rgb2gray(img) * 255).astype(np.uint8)
-    show_images([gray_img])
     faces = face_cascade.detectMultiScale(gray_img, 1.3, 5)
     if len(faces) == 0:
         print("Found no faces.")
@@ -71,13 +70,11 @@ def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors):
     # Patch Accumulation
     R = np.zeros((current_size, current_size, 3), dtype=np.float32)
     Rp = extract_patches(R, patch_shape=(p_size, p_size, 3), extraction_step=sampling_gap)
-    Z = np.zeros((current_size, current_size, 3), dtype=np.float32)
-    Xp = X_patches_raw.copy()
     X[:] = 0
     t = 0
     for t1 in range(X_patches_raw.shape[0]):
         for t2 in range(X_patches_raw.shape[1]):
-            nearest_neighbor = np.reshape(style_patches[indices[t, 0]], (p_size, p_size, 3))
+            nearest_neighbor = style_patches[indices[t, 0]]
             X_patches_raw[t1, t2, 0, :, :, :] += nearest_neighbor * weights[t]
             Rp[t1, t2, 0, :, :, :] += 1 * weights[t]
             t = t + 1
@@ -90,29 +87,28 @@ def style_transfer(content, style, segmentation_mask):
     style_arr = build_gaussian_pyramid(style, LMAX)
     segm_arr = build_gaussian_pyramid(segmentation_mask, LMAX)
     X = content_arr[LMAX - 1] + np.random.normal(0, 50, size=content_arr[LMAX - 1].shape) / 255.0
-    # X = np.abs(X).astype(np.float32)
     X = np.clip(X, 0.0, 1.0).astype(np.float32)
-    # Set up IRLS constants.
-    irls_const1 = []
-    irls_const2 = []
+    # Set up Content Fusion constants.
+    fus_const1 = []
+    fus_const2 = []
     for i in range(LMAX):
         sx, sy = segm_arr[i].shape
         curr_segm = segm_arr[i].reshape(sx, sy, 1)
-        irls_const1.append(curr_segm * content_arr[i])
-        irls_const2.append(1.0 / (curr_segm + 1))
+        fus_const1.append(curr_segm * content_arr[i])
+        fus_const2.append(1.0 / (curr_segm + 1))
     print('Starting Style Transfer..')
     for L in range(LMAX - 1, -1, -1):  # over scale L
         print('Scale ', L)
-        current_style = style_arr[L]
         current_size = style_arr[L].shape[0]
         Xbefore = X.copy()
         for n in range(PATCH_SIZES.size):  # over patch size n
             p_size = PATCH_SIZES[n]
             print('Patch Size', p_size)
-            style_patches = extract_patches(current_style, patch_shape=(p_size, p_size, 3), extraction_step=SAMPLING_GAPS[n])
+            style_patches = extract_patches(style_arr[L], patch_shape=(p_size, p_size, 3),
+                                            extraction_step=SAMPLING_GAPS[n])
             npatchx, npatchy, _, _, _, _ = style_patches.shape
             npatches = npatchx * npatchy
-            # print("Preparing for NN")
+            # Preparing for NN
             style_patches = style_patches.reshape(-1, p_size * p_size * 3)
             njobs = 1
             if (L == 0) or (L == 1 and p_size <= 13):
@@ -120,19 +116,16 @@ def style_transfer(content, style, segmentation_mask):
             neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='brute', n_jobs=njobs).fit(style_patches)
             style_patches = style_patches.reshape((-1, p_size, p_size, 3))
             for k in range(IALG):  # over # of algorithm iterations IALG
-                # Steps 1 & 2: Patch-Matching and and Robust Patch Aggregation
+                # Steps 1 & 2: Patch-Extraction and and Robust Patch Aggregation
                 X_patches_raw = extract_patches(X, patch_shape=(p_size, p_size, 3), extraction_step=SAMPLING_GAPS[n])
                 for i in range(IRLS_it):
                     solve_irls(X, X_patches_raw, n, style_patches, neighbors)
                 # Step 3: Content Fusion
-                current_segm = segm_arr[L].reshape((current_size, current_size, 1))
-                X = irls_const2[L] * (X + irls_const1[L])
+                X = fus_const2[L] * (X + fus_const1[L])
                 # Step 4: Color Transfer
                 X = imhistmatch2(X, style)
                 # Step 5: Denoising
-                # Xpn = X.copy()
                 X = denoise(X, sigma_r=0.17, sigma_s=20)
-                # show_images([Xpn, X])
         show_images([Xbefore, X])
         # Upscale X
         if (L > 0):
@@ -149,8 +142,6 @@ def main():
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
     segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
     show_images([content, segm_mask, style])
-    # content[:] = 0.0
-    # print(content.shape)
     content = imhistmatch(content, style)
     start = timer()
     X = style_transfer(content, style, segm_mask)
