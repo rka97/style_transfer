@@ -4,6 +4,8 @@ from color_transfer.color_transfer import *
 from domain_transform.domain_transform import *
 from sklearn.feature_extraction.image import extract_patches
 from sklearn.neighbors import NearestNeighbors
+from sklearn.decomposition import PCA
+from timeit import default_timer as timer
 LMAX = 3
 IM_SIZE = 400
 PATCH_SIZES = np.array([33, 21, 13, 9])
@@ -33,7 +35,7 @@ def build_gaussian_pyramid(img, L):
 
 
 def get_segmentation_mask(mode):
-    return np.zeros((IM_SIZE, IM_SIZE), dtype=np.float32)
+    return np.ones((IM_SIZE, IM_SIZE), dtype=np.float32) * 0
 
 
 def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors):
@@ -107,7 +109,7 @@ def style_transfer(content, style, segmentation_mask):
                 current_segm = segm_arr[L].reshape((current_size, current_size, 1))
                 X[:] = (X[:] + irls_const1[L]) / irls_const2[L]
                 # Step 4: Color Transfer
-                X = color_transfer_hm(X, style)
+                X = color_transfer_lab(X, style)
                 # Step 5: Denoising
                 # X = denoise(X)
         # show_images([Xbefore, X])
@@ -121,11 +123,15 @@ def style_transfer(content, style, segmentation_mask):
 def main():
     content = cv2.resize(io.imread('images/ocean_day.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
     content = content.astype(np.float32)
-    style = cv2.resize(io.imread('images/autumn.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
+    style = cv2.resize(io.imread('images/ocean_sunset.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
     style = style.astype(np.float32)
-    content = color_transfer_hm(content, style)
+    content = color_transfer_lab(content, style)
+    show_images([content, style])
     segmentation_mask = get_segmentation_mask(None)
+    start = timer()
     X = style_transfer(content, style, segmentation_mask)
+    end = timer()
+    print("Style Transfer took ", end - start, " seconds!")
     # Finished. Just show the images
     show_images([content, style, X])
 

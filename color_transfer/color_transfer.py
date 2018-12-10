@@ -1,6 +1,7 @@
 from skimage import color
 from scipy.linalg import fractional_matrix_power as fractional_power
 from numpy.linalg import matrix_power
+import cv2
 from .commonfunctions import *
 
 
@@ -8,8 +9,8 @@ from .commonfunctions import *
 # the mean and variance there, then converting the image back into RGB
 def color_transfer_lab(content, style):
     # convert images to LAB space
-    style_lab = color.rgb2lab(style)
-    content_lab = color.rgb2lab(content)
+    style_lab = cv2.cvtColor(style.astype("float32"), cv2.COLOR_RGB2LAB).astype("float32")  # color.rgb2lab(style)
+    content_lab = cv2.cvtColor(content.astype("float32"), cv2.COLOR_RGB2LAB).astype("float32")  # color.rgb2lab(content)
     # calculate mean
     content_mu = np.mean(content_lab, axis=tuple(range(2)))
     style_mu = np.mean(style_lab, axis=tuple(range(2)))
@@ -17,9 +18,10 @@ def color_transfer_lab(content, style):
     content_std = np.std(content_lab, axis=tuple(range(2)))
     style_std = np.std(style_lab, axis=tuple(range(2)))
     # transfer
-    content_lab = (content_lab - content_mu + style_mu) * (content_std / style_std)
+    content_lab = (content_lab - content_mu) * (content_std / style_std) + style_mu
+    content_lab = np.clip(content_lab, 0, 255)
     # convert back to RGB
-    content_rgb = color.lab2rgb(content_lab)
+    content_rgb = cv2.cvtColor(content_lab, cv2.COLOR_LAB2RGB)  # color.lab2rgb(content_lab)
     return content_rgb
 
 
