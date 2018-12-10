@@ -2,8 +2,10 @@ import cv2
 from color_transfer.commonfunctions import *
 from color_transfer.color_transfer import *
 from domain_transform.domain_transform import *
+from fast_nearest_neighbor.fast_nearest_neighbor import *
 from sklearn.feature_extraction.image import extract_patches
 from sklearn.neighbors import NearestNeighbors
+
 LMAX = 3
 IM_SIZE = 400
 PATCH_SIZES = np.array([33, 21, 13, 9])
@@ -11,7 +13,6 @@ SAMPLING_GAPS = np.array([28, 18, 8, 5])
 IALG = 10
 IRLS_it = 3
 IRLS_r = 0.8
-
 
 # Computes np.sum(A * B, axis=0)
 def SumOfProduct(A, B, num_times=1):
@@ -36,13 +37,18 @@ def get_segmentation_mask(mode):
     return np.zeros((IM_SIZE, IM_SIZE), dtype=np.float32)
 
 
-def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors):
+def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors, projection_matrix):
     p_size = PATCH_SIZES[p_index]
     sampling_gap = SAMPLING_GAPS[p_index]
     current_size = X.shape[0]
     # Extracting Patches
     X_patches = X_patches_raw.reshape(-1, p_size * p_size * 3)
     npatches = X_patches.shape[0]
+
+    # projecting X to same dimention as style patches
+    if p_size == 13 or p_size == 9:
+        X_patches = project(X_patches, projection_matrix)
+
     # Computing Nearest Neighbors
     distances, indices = neighbors.kneighbors(X_patches)
     # Computing Weights
@@ -97,12 +103,20 @@ def style_transfer(content, style, segmentation_mask):
             njobs = 1
             if (L == 0) or (L == 1 and p_size <= 13):
                 njobs = -1
-            neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='ball_tree', n_jobs=njobs).fit(style_patches)
+
+            projection_matrix = 0
+            # for small patches perform PCA
+            if p_size == 13 or p_size == 9:
+                new_stlye_patches, projection_matrix = pca(style_patches)
+                neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='ball_tree', n_jobs=njobs).fit(new_stlye_patches)
+            else:
+                neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='ball_tree', n_jobs=njobs).fit(style_patches)
+            
             for k in range(IALG):  # over # of algorithm iterations IALG
                 # Steps 1 & 2: Patch-Matching and and Robust Patch Aggregation
                 X_patches_raw = extract_patches(X, patch_shape=(p_size, p_size, 3), extraction_step=SAMPLING_GAPS[n])
                 for i in range(IRLS_it):
-                    solve_irls(X, X_patches_raw, n, style_patches, neighbors)
+                    solve_irls(X, X_patches_raw, n, style_patches, neighbors, projection_matrix)
                 # Step 3: Content Fusion
                 current_segm = segm_arr[L].reshape((current_size, current_size, 1))
                 X[:] = (X[:] + irls_const1[L]) / irls_const2[L]
@@ -129,4 +143,17 @@ def main():
     # Finished. Just show the images
     show_images([content, style, X])
 
-main()
+def mainGui(content_image, stlye_image):
+    content = cv2.resize(io.imread(content_image), (IM_SIZE, IM_SIZE)) / 255.0
+    content = content.astype(np.float32)
+    style = cv2.resize(io.imread(stlye_image), (IM_SIZE, IM_SIZE)) / 255.0
+    style = style.astype(np.float32)
+    content = color_transfer_hm(content, style)
+    segmentation_mask = get_segmentation_mask(None)
+    X = style_transfer(content, style, segmentation_mask)
+    X = X * 255.0
+    output_image = "x.png"
+    cv2.imwrite(output_image, X)
+    return output_image
+
+# main()
