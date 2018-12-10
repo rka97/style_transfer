@@ -9,8 +9,8 @@ from .commonfunctions import *
 # the mean and variance there, then converting the image back into RGB
 def color_transfer_lab(content, style):
     # convert images to LAB space
-    style_lab = cv2.cvtColor(style.astype("float32"), cv2.COLOR_RGB2LAB).astype("float32")  # color.rgb2lab(style)
-    content_lab = cv2.cvtColor(content.astype("float32"), cv2.COLOR_RGB2LAB).astype("float32")  # color.rgb2lab(content)
+    style_lab = cv2.cvtColor((style * 255).astype("uint8"), cv2.COLOR_RGB2LAB).astype("float32")  # color.rgb2lab(style)
+    content_lab = cv2.cvtColor((content * 255).astype("uint8"), cv2.COLOR_RGB2LAB).astype("float32")  # color.rgb2lab(content)
     # calculate mean
     content_mu = np.mean(content_lab, axis=tuple(range(2)))
     style_mu = np.mean(style_lab, axis=tuple(range(2)))
@@ -20,9 +20,10 @@ def color_transfer_lab(content, style):
     # transfer
     content_lab = (content_lab - content_mu) * (content_std / style_std) + style_mu
     content_lab = np.clip(content_lab, 0, 255)
-    # convert back to RGB
-    content_rgb = cv2.cvtColor(content_lab, cv2.COLOR_LAB2RGB)  # color.lab2rgb(content_lab)
-    return content_rgb
+    # convert back to RGB)
+    content_rgb = cv2.cvtColor(content_lab.astype("uint8"), cv2.COLOR_LAB2RGB)  # color.lab2rgb(content_lab)
+    content_rgb = np.clip(content_rgb, 0, 255) / 255.0
+    return content_rgb.astype("float32")
 
 
 # doe color transfer through histogram matching
@@ -41,4 +42,5 @@ def color_transfer_hm(content, style):
     x, y, z = np.shape(content)
     content = np.dot(A, original.reshape(-1, z).T)
     content = (content.T + b).reshape(x, y, z)
+    content = np.clip(content, 0.0, 1.0)
     return content

@@ -5,11 +5,14 @@ from domain_transform.domain_transform import *
 from sklearn.feature_extraction.image import extract_patches
 from sklearn.neighbors import NearestNeighbors
 from sklearn.decomposition import PCA
+from skimage.feature import canny
+from skimage.segmentation import *
+from scipy.ndimage import binary_fill_holes
 from timeit import default_timer as timer
 LMAX = 3
 IM_SIZE = 400
-PATCH_SIZES = np.array([33, 21, 13, 9])
-SAMPLING_GAPS = np.array([28, 18, 8, 5])
+PATCH_SIZES = np.array([33, 21, 13])
+SAMPLING_GAPS = np.array([28, 18, 8])
 IALG = 10
 IRLS_it = 3
 IRLS_r = 0.8
@@ -34,8 +37,17 @@ def build_gaussian_pyramid(img, L):
     return img_arr
 
 
-def get_segmentation_mask(mode):
-    return np.ones((IM_SIZE, IM_SIZE), dtype=np.float32) * 0
+def get_segmentation_mask(mode, img=None):
+    if (img is None):
+        return np.zeros((IM_SIZE, IM_SIZE), dtype=np.float32)
+    else:
+        if (mode is None):
+            edge = (canny(rgb2gray(img)) * 1.0).astype(np.float32)
+            return binary_fill_holes(edge)
+        elif mode == 'vase':
+            segm = 1 - chan_vese(rgb2gray(img))
+            return (segm * 1.0).astype(np.float32)
+
 
 
 def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors):
@@ -47,25 +59,25 @@ def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors):
     npatches = X_patches.shape[0]
     # Computing Nearest Neighbors
     distances, indices = neighbors.kneighbors(X_patches)
+    distances += 0.0001
     # Computing Weights
     weights = np.power(distances, IRLS_r - 2)
     # Patch Accumulation
     R = np.zeros((current_size, current_size, 3), dtype=np.float32)
+    Rp = extract_patches(R, patch_shape=(p_size, p_size, 3), extraction_step=sampling_gap)
     Z = np.zeros((current_size, current_size, 3), dtype=np.float32)
+    Xp = X_patches_raw.copy()
     X[:] = 0
-    t_i = -1 * sampling_gap
-    t_j = 0
-    for t in range(npatches):
-        t_i += sampling_gap
-        if t_i + p_size > current_size:
-            t_i = 0
-            t_j += sampling_gap
-            if t_j + p_size > current_size:
-                raise ValueError("We really should never be here.\n")
-        nearest_neighbor = np.reshape(style_patches[indices[t, 0]], (p_size, p_size, 3))
-        X[t_i:t_i + p_size, t_j:t_j + p_size, :] += nearest_neighbor * weights[t]
-        R[t_i:t_i + p_size, t_j:t_j + p_size, :] += 1 * weights[t]
-    R[np.abs(R) < 0.001] = 0.001
+    t = 0
+    for t1 in range(X_patches_raw.shape[0]):
+        for t2 in range(X_patches_raw.shape[1]):
+            nearest_neighbor = np.reshape(style_patches[indices[t, 0]], (p_size, p_size, 3))
+            # show_images([Xp[t1, t2, 0, :, :, :], nearest_neighbor])
+            X_patches_raw[t1, t2, 0, :, :, :] += nearest_neighbor * weights[t]
+            Rp[t1, t2, 0, :, :, :] += 1 * weights[t]
+            t = t + 1
+    R += 0.0001
+    #R[np.abs(R) < 0.001] = 0.001
     X /= R
 
 
@@ -73,7 +85,8 @@ def style_transfer(content, style, segmentation_mask):
     content_arr = build_gaussian_pyramid(content, LMAX)
     style_arr = build_gaussian_pyramid(style, LMAX)
     segm_arr = build_gaussian_pyramid(segmentation_mask, LMAX)
-    X = content_arr[LMAX - 1] + np.random.normal(0, 50, size=content_arr[LMAX - 1].shape) / 255.0
+    X = content_arr[LMAX - 1]  # + np.random.normal(0, 50, size=content_arr[LMAX - 1].shape) / 255.0
+    X = np.clip(X, 0.0, 1.0).astype(np.float32)
     # Set up IRLS constants.
     irls_const1 = []
     irls_const2 = []
@@ -81,7 +94,7 @@ def style_transfer(content, style, segmentation_mask):
         sx, sy = segm_arr[i].shape
         curr_segm = segm_arr[i].reshape(sx, sy, 1)
         irls_const1.append(curr_segm * content_arr[i])
-        irls_const2.append(curr_segm + 1)
+        irls_const2.append(1.0 / (curr_segm + 1))
     print('Starting Style Transfer..')
     for L in range(LMAX - 1, -1, -1):  # over scale L
         print('Scale ', L)
@@ -99,7 +112,7 @@ def style_transfer(content, style, segmentation_mask):
             njobs = 1
             if (L == 0) or (L == 1 and p_size <= 13):
                 njobs = -1
-            neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='ball_tree', n_jobs=njobs).fit(style_patches)
+            neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='brute', n_jobs=njobs).fit(style_patches)
             for k in range(IALG):  # over # of algorithm iterations IALG
                 # Steps 1 & 2: Patch-Matching and and Robust Patch Aggregation
                 X_patches_raw = extract_patches(X, patch_shape=(p_size, p_size, 3), extraction_step=SAMPLING_GAPS[n])
@@ -107,12 +120,12 @@ def style_transfer(content, style, segmentation_mask):
                     solve_irls(X, X_patches_raw, n, style_patches, neighbors)
                 # Step 3: Content Fusion
                 current_segm = segm_arr[L].reshape((current_size, current_size, 1))
-                X[:] = (X[:] + irls_const1[L]) / irls_const2[L]
+                X = irls_const2[L] * (X + irls_const1[L])
                 # Step 4: Color Transfer
                 X = color_transfer_lab(X, style)
                 # Step 5: Denoising
                 # X = denoise(X)
-        # show_images([Xbefore, X])
+        show_images([Xbefore, X])
         # Upscale X
         if (L > 0):
             sizex, sizey, _ = content_arr[L - 1].shape
@@ -121,18 +134,20 @@ def style_transfer(content, style, segmentation_mask):
 
 
 def main():
-    content = cv2.resize(io.imread('images/ocean_day.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
-    content = content.astype(np.float32)
-    style = cv2.resize(io.imread('images/ocean_sunset.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
+    content = cv2.resize(io.imread('images/houses.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
+    content = content.astype(np.float32)[:, :, 0:3]
+    # content[:] = 0.0
+    print(content.shape)
+    style = cv2.resize(io.imread('images/van_gogh.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
     style = style.astype(np.float32)
     content = color_transfer_lab(content, style)
-    show_images([content, style])
-    segmentation_mask = get_segmentation_mask(None)
+    segmentation_mask = get_segmentation_mask('vase', content)
+    show_images([content, segmentation_mask, style])
     start = timer()
     X = style_transfer(content, style, segmentation_mask)
     end = timer()
     print("Style Transfer took ", end - start, " seconds!")
     # Finished. Just show the images
-    show_images([content, style, X])
+    show_images([content, segmentation_mask, style, X])
 
 main()
