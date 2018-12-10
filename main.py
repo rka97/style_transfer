@@ -37,14 +37,14 @@ def build_gaussian_pyramid(img, L):
     return img_arr
 
 
-def get_segmentation_mask(mode, img=None):
-    if (img is None):
-        return np.zeros((IM_SIZE, IM_SIZE), dtype=np.float32)
+def get_segmentation_mask(mode, img=None, c=1.0):
+    if mode == 'none' or mode is None or img is None:
+        return np.ones((IM_SIZE, IM_SIZE), dtype=np.float32) * c
     else:
-        if (mode is None):
-            edge = (canny(rgb2gray(img)) * 1.0).astype(np.float32)
+        if mode == 'edge':
+            edge = (canny(rgb2gray(img), sigma=0.5, low_threshold=0.0, high_threshold=0.3) * 1.0).astype(np.float32)
             return binary_fill_holes(edge)
-        elif mode == 'vase':
+        elif mode == 'vese':
             segm = 1 - chan_vese(rgb2gray(img))
             return (segm * 1.0).astype(np.float32)
 
@@ -85,7 +85,8 @@ def style_transfer(content, style, segmentation_mask):
     content_arr = build_gaussian_pyramid(content, LMAX)
     style_arr = build_gaussian_pyramid(style, LMAX)
     segm_arr = build_gaussian_pyramid(segmentation_mask, LMAX)
-    X = content_arr[LMAX - 1]  # + np.random.normal(0, 50, size=content_arr[LMAX - 1].shape) / 255.0
+    X = content_arr[LMAX - 1] + np.random.normal(0, 50, size=content_arr[LMAX - 1].shape) / 255.0
+    # X = np.abs(X).astype(np.float32)
     X = np.clip(X, 0.0, 1.0).astype(np.float32)
     # Set up IRLS constants.
     irls_const1 = []
@@ -122,9 +123,11 @@ def style_transfer(content, style, segmentation_mask):
                 current_segm = segm_arr[L].reshape((current_size, current_size, 1))
                 X = irls_const2[L] * (X + irls_const1[L])
                 # Step 4: Color Transfer
-                X = color_transfer_lab(X, style)
+                X = imhistmatch2(X, style)
                 # Step 5: Denoising
-                # X = denoise(X)
+                # Xpn = X.copy()
+                X = denoise(X, sigma_r=0.17, sigma_s=20)
+                # show_images([Xpn, X])
         show_images([Xbefore, X])
         # Upscale X
         if (L > 0):
@@ -137,11 +140,11 @@ def main():
     content = cv2.resize(io.imread('images/houses.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
     content = content.astype(np.float32)[:, :, 0:3]
     # content[:] = 0.0
-    print(content.shape)
+    # print(content.shape)
     style = cv2.resize(io.imread('images/van_gogh.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
     style = style.astype(np.float32)
-    content = color_transfer_lab(content, style)
-    segmentation_mask = get_segmentation_mask('vase', content)
+    content = imhistmatch(content, style)
+    segmentation_mask = get_segmentation_mask('vese', content, 0.1)
     show_images([content, segmentation_mask, style])
     start = timer()
     X = style_transfer(content, style, segmentation_mask)
