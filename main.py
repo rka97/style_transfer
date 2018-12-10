@@ -144,7 +144,7 @@ def main():
     style = cv2.resize(io.imread('images/van_gogh.jpg'), (IM_SIZE, IM_SIZE)) / 255.0
     style = style.astype(np.float32)
     content = imhistmatch(content, style)
-    segmentation_mask = get_segmentation_mask('vese', content, 0.1)
+    segmentation_mask = get_segmentation_mask('none', content, 1)
     show_images([content, segmentation_mask, style])
     start = timer()
     X = style_transfer(content, style, segmentation_mask)
