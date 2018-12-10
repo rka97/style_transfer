@@ -2,13 +2,15 @@ import cv2 as cv2
 from color_transfer.commonfunctions import *
 from color_transfer.color_transfer import *
 from domain_transform.domain_transform import *
+from fast_nearest_neighbor.fast_nearest_neighbor import *
 from sklearn.feature_extraction.image import extract_patches
 from sklearn.neighbors import NearestNeighbors
-from sklearn.decomposition import PCA
+# from sklearn.decomposition import PCA
 from skimage.feature import canny
 from skimage.segmentation import *
 from scipy.ndimage import binary_fill_holes
 from timeit import default_timer as timer
+
 LMAX = 3
 IM_SIZE = 400
 PATCH_SIZES = np.array([33, 21, 13])
@@ -55,13 +57,18 @@ def get_segmentation_mask(mode, img=None, c=1.0):
         return (segm * 1.0).astype(np.float32)
 
 
-def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors):
+def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors, projection_matrix):
     p_size = PATCH_SIZES[p_index]
     sampling_gap = SAMPLING_GAPS[p_index]
     current_size = X.shape[0]
     # Extracting Patches
     X_patches = X_patches_raw.reshape(-1, p_size * p_size * 3)
     npatches = X_patches.shape[0]
+
+    # projecting X to same dimention as style patches
+    if p_size == 13 or p_size == 21:
+        X_patches = project(X_patches, projection_matrix)
+
     # Computing Nearest Neighbors
     distances, indices = neighbors.kneighbors(X_patches)
     distances += 0.0001
@@ -113,20 +120,30 @@ def style_transfer(content, style, segmentation_mask):
             njobs = 1
             if (L == 0) or (L == 1 and p_size <= 13):
                 njobs = -1
-            neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='brute', n_jobs=njobs).fit(style_patches)
+            # neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='brute', n_jobs=njobs).fit(style_patches)
+            # style_patches = style_patches.reshape((-1, p_size, p_size, 3))
+
+            projection_matrix = 0
+            # for small patches perform PCA
+            if p_size == 13 or p_size == 21:
+                new_stlye_patches, projection_matrix = pca(style_patches)
+                neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='kd_tree', n_jobs=njobs).fit(new_stlye_patches)
+            else:
+                neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='kd_tree', n_jobs=njobs).fit(style_patches)
             style_patches = style_patches.reshape((-1, p_size, p_size, 3))
+
             for k in range(IALG):  # over # of algorithm iterations IALG
                 # Steps 1 & 2: Patch-Extraction and and Robust Patch Aggregation
                 X_patches_raw = extract_patches(X, patch_shape=(p_size, p_size, 3), extraction_step=SAMPLING_GAPS[n])
                 for i in range(IRLS_it):
-                    solve_irls(X, X_patches_raw, n, style_patches, neighbors)
+                    solve_irls(X, X_patches_raw, n, style_patches, neighbors, projection_matrix)
                 # Step 3: Content Fusion
                 X = fus_const2[L] * (X + fus_const1[L])
                 # Step 4: Color Transfer
                 X = imhistmatch2(X, style)
                 # Step 5: Denoising
                 X = denoise(X, sigma_r=0.17, sigma_s=20)
-        show_images([Xbefore, X])
+        # show_images([Xbefore, X])
         # Upscale X
         if (L > 0):
             sizex, sizey, _ = content_arr[L - 1].shape
@@ -150,4 +167,22 @@ def main():
     # Finished. Just show the images
     show_images([content, segm_mask, style, X])
 
-main()
+def mainGui(content_image, stlye_image):
+    content = io.imread(content_image) / 255.0
+    style = io.imread(stlye_image) / 255.0
+    segm_mask = get_segmentation_mask('face', content, 0.0)
+    content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
+    style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
+    segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
+    # show_images([content, segm_mask, style])
+    content = imhistmatch(content, style)
+    start = timer()
+    X = style_transfer(content, style, segm_mask)
+    end = timer()
+    print("Style Transfer took ", end - start, " seconds!")
+    X = X * 255.0
+    output_image = "x.png"
+    cv2.imwrite(output_image, X)
+    return output_image
+
+# main()
