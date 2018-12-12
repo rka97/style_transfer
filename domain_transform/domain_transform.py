@@ -8,16 +8,17 @@ import cv2
 # abs_der: | d/dx (img(x)) |
 # J[n] = I[n] + a^d (J[n-1] - I[n])
 def recursive_filter(img, abs_der, h):
+    im = np.copy(img)
     a = np.exp(-1 * np.sqrt(2) / h)
     var = np.power(a, abs_der)
     l, m, n = img.shape
-    for i in range(2, m):
+    for i in range(1, m):
         for j in range(n):
-            img[:, i, j] = img[:, i, j] + np.multiply(var[:, i], (img[:, i - 1, j] - img[:, i, j]))
+            im[:, i, j] = img[:, i, j] + np.multiply(var[:, i], (im[:, i - 1, j] - img[:, i, j]))
     for i in range(m - 2, 0, -1):
         for j in range(n):
-            img[:, i, j] = img[:, i, j] + np.multiply(var[:, i + 1], (img[:, i + 1, j] - img[:, i, j]))
-    return img
+            im[:, i, j] = img[:, i, j] + np.multiply(var[:, i + 1], (im[:, i + 1, j] - img[:, i, j]))
+    return im
 
 
 # img: the image to denoise.
