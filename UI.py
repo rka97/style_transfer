@@ -82,6 +82,10 @@ class UI(object):
         self.original_image_view.setObjectName("original_image_view")
         self.gridLayout.addWidget(self.original_image_view, 1, 0, 2, 1)
 
+        self.export_btn = QtWidgets.QPushButton(self.centralwidget)
+        self.export_btn.setObjectName("export_btn")
+        self.gridLayout.addWidget(self.export_btn, 3, 2, 1, 1)
+
         self.gridLayout_2.addLayout(self.gridLayout, 0, 0, 1, 1)
         self.window.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(self.window)
@@ -112,13 +116,14 @@ class UI(object):
 
     def retranslateUi(self):
         _translate = QtCore.QCoreApplication.translate
-        self.window.setWindowTitle(_translate("self.window", "self.window"))
+        self.window.setWindowTitle(_translate("self.title", self.title))
         self.transfer_btn.setText(_translate("self.window", "Transfer"))
         self.label.setText(_translate("self.window", "Original"))
         self.label_2.setText(_translate("self.window", "Output"))
         self.label_3.setText(_translate("self.window", "Style"))
         self.original_browse_btn.setText(_translate("self.window", "Browse"))
         self.stlye_browse_btn.setText(_translate("self.window", "Browse"))
+        self.export_btn.setText(_translate("self.window", "Export"))
         self.menuFile.setTitle(_translate("self.window", "File"))
         self.menuHelp.setTitle(_translate("self.window", "Help"))
         self.actionOpen.setText(_translate("self.window", "Open"))

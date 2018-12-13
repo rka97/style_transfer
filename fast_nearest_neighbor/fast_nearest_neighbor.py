@@ -56,7 +56,7 @@ def projectionMat(mat):
 
     ep = np.zeros((k, new_mat.shape[1]))
     for i in range(k):
-        ep[i] = eig_vec_cov[:,i]
+        ep[i] = eig_vec_cov[:,i].real
     
     return ep
 

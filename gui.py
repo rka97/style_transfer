@@ -1,7 +1,7 @@
 import sys
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QPushButton, QAction
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QImage
 from PyQt5.QtCore import pyqtSlot
 
 from UI import UI
@@ -14,13 +14,16 @@ class App():
         super().__init__()
         self.app = QApplication(sys.argv)
         
-        self.ui = UI()
+        self.ui = UI(title="Style Transfer")
         self.ui.transfer_btn.clicked.connect(self.transfer)
         self.ui.original_browse_btn.clicked.connect(self.setOriginalImage)
         self.ui.stlye_browse_btn.clicked.connect(self.setStyleImage)
+        self.ui.export_btn.clicked.connect(self.export)
         self.content_image = -1
         self.style_image = -1
-        
+        self.output_image = False
+        self.x = None
+
     def run(self):
         sys.exit(self.app.exec_())
 
@@ -28,18 +31,40 @@ class App():
         if self.content_image == -1 or self.style_image == -1:
             return
         
-        output_image = mainGui(self.content_image, self.style_image)
+        self.x = mainGui(self.content_image, self.style_image)
+        self.output_image = True
         width = self.ui.output_image_view.width()
         height = self.ui.output_image_view.height()
-        image = QtGui.QPixmap(output_image)
-        image = image.scaled(width, height, QtCore.Qt.KeepAspectRatio)
+
+        h, w, channel = self.x.shape
+        bytes_per_line = 3 * w
+        image = QImage(self.x.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        pix = QtGui.QPixmap(image)
+        pix = pix.scaled(width, height, QtCore.Qt.KeepAspectRatio)
         
-        self.ui.output_image_view.setPixmap(image)
+        self.ui.output_image_view.setPixmap(pix)
+
+    def export(self):
+        filename = self.saveFileNameDialog()
+
+        if not self.output_image or filename == -1:
+            return
+        
+        io.imsave(filename, self.x)
 
     def openFileNameDialog(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
         fileName, _ = QFileDialog.getOpenFileName(self.ui.window, "QFileDialog.getOpenFileName()", "","Images (*.png *.xpm *.jpg *.jepg)", options=options)
+        if fileName:
+            return fileName
+        else:
+            return -1
+
+    def saveFileNameDialog(self):
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+        fileName, _ = QFileDialog.getSaveFileName(self.ui.window, "QFileDialog.getSaveFileName()", "","Images (*.png *.xpm *.jpg *.jepg)", options=options)
         if fileName:
             return fileName
         else:
