@@ -64,11 +64,9 @@ def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors, projection_m
     # Extracting Patches
     X_patches = X_patches_raw.reshape(-1, p_size * p_size * 3)
     npatches = X_patches.shape[0]
-
-    # projecting X to same dimention as style patches
+    # Projecting X to same dimention as style patches
     if p_size == 13 or p_size == 21:
         X_patches = project(X_patches, projection_matrix)
-
     # Computing Nearest Neighbors
     distances, indices = neighbors.kneighbors(X_patches)
     distances += 0.0001
@@ -122,16 +120,14 @@ def style_transfer(content, style, segmentation_mask):
                 njobs = -1
             # neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='brute', n_jobs=njobs).fit(style_patches)
             # style_patches = style_patches.reshape((-1, p_size, p_size, 3))
-
             projection_matrix = 0
             # for small patches perform PCA
             if p_size == 13 or p_size == 21:
-                new_stlye_patches, projection_matrix = pca(style_patches)
-                neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='kd_tree', n_jobs=njobs).fit(new_stlye_patches)
+                new_style_patches, projection_matrix = pca(style_patches)
+                neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='kd_tree', n_jobs=njobs).fit(new_style_patches)
             else:
                 neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='kd_tree', n_jobs=njobs).fit(style_patches)
             style_patches = style_patches.reshape((-1, p_size, p_size, 3))
-
             for k in range(IALG):  # over # of algorithm iterations IALG
                 # Steps 1 & 2: Patch-Extraction and and Robust Patch Aggregation
                 X_patches_raw = extract_patches(X, patch_shape=(p_size, p_size, 3), extraction_step=SAMPLING_GAPS[n])
@@ -167,9 +163,10 @@ def main():
     # Finished. Just show the images
     show_images([content, segm_mask, style, X])
 
-def mainGui(content_image, stlye_image):
+
+def main_gui(content_image, style_image):
     content = io.imread(content_image) / 255.0
-    style = io.imread(stlye_image) / 255.0
+    style = io.imread(style_image) / 255.0
     segm_mask = get_segmentation_mask('face', content, 0.0)
     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
@@ -185,4 +182,4 @@ def mainGui(content_image, stlye_image):
     cv2.imwrite(output_image, X)
     return output_image
 
-# main()
+main()
