@@ -177,9 +177,9 @@ def main_gui(content_image, style_image):
     X = style_transfer(content, style, segm_mask)
     end = timer()
     print("Style Transfer took ", end - start, " seconds!")
-    X = X * 255.0
-    output_image = "x.png"
-    cv2.imwrite(output_image, X)
-    return output_image
+    X_fixed = X * 255.0
+    X_fixed = X_fixed.astype(np.uint8)
+    # io.imsave("x.png", X_fixed)
+    return X_fixed
 
 main()
