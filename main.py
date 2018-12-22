@@ -45,15 +45,12 @@ def segment_faces(img):
     faces = face_cascade.detectMultiScale(gray_img, 1.25, 5)
     temp_img = (img.copy() * 255).astype(np.uint8)
     if len(faces) == 0:
-        print("Found no faces.")
+        print("Found no faces. Will Hallucinate.")
         return np.zeros_like(gray_img)
     for (x, y, w, h) in faces:
-        print(x, y, w, h)
         bgdModel = np.zeros((1, 65), np.float64)
         fgdModel = np.zeros((1, 65), np.float64)
         mask = np.zeros_like(gray_img).astype(np.uint8)
-        # mask[x:x + w, y:y + h] = 255
-        # return mask / 255.0
         mask[:] = 2
         mask[x:x + w, y:y + h] = 3
         cv2.grabCut(temp_img, mask=mask, rect=(x, y, w, h), bgdModel=bgdModel, fgdModel=fgdModel, iterCount=10, mode=cv2.GC_INIT_WITH_MASK)
@@ -61,21 +58,15 @@ def segment_faces(img):
         mask_max = np.max(mask)
         mask = (mask - mask_min) / (mask_max - mask_min)
         return gaussian(mask, 5)
-    # return gray_img / 255.0
 
 
 def get_segmentation_mask(mode, img=None, c=1.0):
     if mode == 'none' or mode is None or img is None:
         return np.ones((IM_SIZE, IM_SIZE), dtype=np.float32) * c
     elif mode == 'edge':
-        return edge_segmentation(img) * c
-        # edge = (canny(rgb2gray(img), sigma=0.5, low_threshold=0.0, high_threshold=0.3) * 1.0).astype(np.float32)
-        # return binary_fill_holes(edge)
+        return segment_edges(img) * c
     elif mode == 'face':
         return segment_faces(img) * c
-    elif mode == 'vese':
-        segm = 1 - chan_vese(rgb2gray(img))
-        return (segm * 1.0).astype(np.float32)
 
 
 def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors, projection_matrix):
@@ -171,14 +162,12 @@ def style_transfer(content, style, segmentation_mask):
                 # Step 3: Content Fusion
                 X = const2 * (X + const1)
                 # Step 4: Color Transfer
-                X = imhistmatch(X, style)
+                X = color_transfer(X, style)
                 # Step 5: Denoising
                 # Xpden = X.copy()
                 X[:style_L_sx, :style_L_sx, :] = denoise(X[:style_L_sx, :style_L_sx, :], sigma_r=0.17, sigma_s=15)
                 # show_images([Xpden, X])
-            # print(X.shape)
             X = X[:style_L_sx, :style_L_sx, :]
-            # X = cv2.resize()
         show_images([Xbefore, X])
         # Upscale X
         if (L > 0):
@@ -187,33 +176,17 @@ def style_transfer(content, style, segmentation_mask):
     return X
 
 
-def pad_img(img, padding_size):
-    if (img.ndim == 3):
-        new_img = np.zeros((img.shape[0] + padding_size, img.shape[1] + padding_size, img.shape[2]))
-        new_img[0:img.shape[0], 0:img.shape[1], :] = img
-    else:
-        new_img = np.zeros((img.shape[0] + padding_size, img.shape[1] + padding_size))
-        new_img[0:img.shape[0], 0:img.shape[1]] = img
-    return new_img
-
-
 def main():
     content = io.imread('paper_images/Venice.jpg') / 255.0
     style = io.imread('paper_images/emma.jpg') / 255.0
     segm_mask = get_segmentation_mask('edge', content, 1.0)
-    # print(segm_mask)
     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
-    # content = pad_img(content, 100)
-    # content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
-    # segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
-    # segm_mask = pad_img(segm_mask, 100)
     segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
     show_images([content, segm_mask, style])
     original_content = content.copy()
-    content = imhistmatch(content, style)
+    content = color_transfer(content, style)
     start = timer()
-    # X = (style_transfer(content, style, segm_mask))[0:400, 0:400, :]
     X = style_transfer(content, style, segm_mask)
     end = timer()
     print("Style Transfer took ", end - start, " seconds!")
@@ -230,7 +203,7 @@ def main_gui(content_image, style_image):
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
     segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
     # show_images([content, segm_mask, style])
-    content = imhistmatch2(content, style)
+    content = color_transfer(content, style)
     start = timer()
     X = style_transfer(content, style, segm_mask)
     end = timer()

@@ -4,7 +4,6 @@ import numpy as np
 import skimage.io as io
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.image import extract_patches
-from sklearn.neighbors import NearestNeighbors
 
 
 def means_mat(mat):
@@ -13,7 +12,7 @@ def means_mat(mat):
     return means
 
 
-def co_variance_mat(mat):
+def covariance_mat(mat):
     # removing mean to make the data with zero means so it varies around the origion
     means = means_mat(mat)
     mat = mat - means
@@ -26,7 +25,7 @@ def projection_mat(mat):
     new_mat = mat.copy()
 
     # creating covarianve matrix to perform get its eigen values and eigen vectors
-    covariance_matrix = co_variance_mat(new_mat)
+    covariance_matrix = covariance_mat(new_mat)
 
     # eigenvectors and eigenvalues of the covariance matrix
     eig_val_cov, eig_vec_cov = np.linalg.eig(covariance_matrix)
@@ -43,7 +42,7 @@ def projection_mat(mat):
     for key in eig_val_vec:
         eig_val_cov[i] = key
         eig_vec_cov[:, i] = eig_val_vec[key]
-        i = i+1
+        i = i + 1
 
     # normlizing eigen values
     eig_val_cov = eig_val_cov / np.sum(eig_val_cov)
@@ -53,7 +52,6 @@ def projection_mat(mat):
     for i in range(0, eig_val_cov.shape[0]):
         if summation >= 0.95:
             break
-
         k = k + 1
         summation = summation + eig_val_cov[i]
 
