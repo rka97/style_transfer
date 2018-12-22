@@ -64,7 +64,8 @@ def get_segmentation_mask(mode, img=None, c=1.0):
     if mode == 'none' or mode is None or img is None:
         return np.ones((IM_SIZE, IM_SIZE), dtype=np.float32) * c
     elif mode == 'edge':
-        return segment_edges(img) * c
+        return edge_segmentation(img) * c
+        # return segment_edges(img) * c
     elif mode == 'face':
         return segment_faces(img) * c
 
