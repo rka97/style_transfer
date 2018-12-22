@@ -9,7 +9,7 @@ from skimage.filters import rank
 from scipy.spatial import Delaunay
 from numpy.linalg import multi_dot
 from skimage.util import img_as_ubyte
-from skimage.segmentation import chan_vese
+from skimage.segmentation import chan_vese, morphological_chan_vese
 from scipy.ndimage import binary_fill_holes
 from skimage.morphology import watershed, disk, dilation
 from sklearn.feature_extraction.image import extract_patches
@@ -116,12 +116,15 @@ def edge_segmentation(img, mode=4):
         final_image[:chull.shape[0], :chull.shape[1]] = chull
         return final_image
     else:
+        show_images([edges])
         edges[edges != 0] = 1
         edges = dilation(edges)
+        show_images([edges])
         # Feel free to play around with the parameters to see how they impact the result
-        cv = chan_vese(edges, mu=0.1, lambda1=0.06, lambda2=1, tol=1e-3, max_iter=2000,
-                       dt=0.52, init_level_set="checkerboard", extended_output=True)
-
+        # cv = chan_vese(edges, mu=0.1, lambda1=0.06, lambda2=1, tol=1e-3, max_iter=2000,
+        #                dt=0.52, init_level_set="checkerboard", extended_output=True)
+        cv = morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=edges, smoothing=1)
+        show_images([edges, cv])
         image = dilation(cv[0])
         image = dilation(image)
         image = dilation(image)

@@ -34,9 +34,10 @@ def build_gaussian_pyramid(img, L):
 
 
 def segment_edges(img):
-    E = canny(rgb2gray(img), sigma=1, low_threshold=0.2, high_threshold=0.9)
+    E = canny(rgb2gray(img), sigma=2, low_threshold=0.01, high_threshold=0.1)
+    E = dilation(E)
     show_images([E])
-    return 1.0 * (gaussian(1.0 * E + morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=E, smoothing=1), sigma=5) > 0.3)
+    return 1.0 * (gaussian(1.0 * E + morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=E, smoothing=1), sigma=2) > 0)
 
 
 def segment_faces(img):
@@ -178,9 +179,9 @@ def style_transfer(content, style, segmentation_mask):
 
 
 def main():
-    content = io.imread('images/paper_images/Venice.jpg') / 255.0
-    style = io.imread('images/paper_images/starry-night - small.jpg') / 255.0
-    segm_mask = get_segmentation_mask('edge', content, 1.0)
+    content = io.imread('images/face_blue.jpg') / 255.0
+    style = io.imread('images/paper_images/van_gogh.jpg') / 255.0
+    segm_mask = segment_edges(content) * 0.9  # get_segmentation_mask('edge', content, 1.0)
     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
     segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
