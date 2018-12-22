@@ -73,19 +73,25 @@ def edge_detection(content, n=5, strength_threshold=0.04, coherence_threshold=0.
 
 
 def edge_segmentation(img, mode=4):
+    IM_SIZE = 400
+    img = (cv2.resize(img, (IM_SIZE, IM_SIZE))).astype(np.float32)
     root_n = 5
     edges = edge_detection(img, root_n, strength_threshold=8, coherence_threshold=0.5)  # root_n should be odd number #8-0.5
-
+    final_image = np.zeros((img.shape[0], img.shape[1]))
     if mode == 0:
         # thresholding edges for convex hull with threshold to remove as much noise as possible
         edges[edges >= 0.8] = 1
         edges[edges < 0.8] = 0
         return convex_hull(edges)
+        final_image[:chull.shape[0], :chull.shape[1]] = chull
+        return final_image
     elif mode == 1:
         # thresholding edges for watershed on edges with low threshold to include as much edges as possible
         edges[edges >= 0.2] = 1
         edges[edges < 0.2] = 0
-        return watershed_edges(edges)
+        watershed_edges_bin = watershed_edges(edges)
+        final_image[:watershed_edges_bin.shape[0], :watershed_edges_bin.shape[1]] = watershed_edges_bin
+        return final_image
     elif mode == 2:
         edge_chull = edges
         edge_watershed = edge_chull.copy()
@@ -99,12 +105,16 @@ def edge_segmentation(img, mode=4):
 
         chull = convex_hull(edge_chull)
         watershed_edges_bin = watershed_edges(edge_watershed)
-        return chull * watershed_edges_bin[:chull.shape[0], :chull.shape[1]]
+        watershed_cull = chull * watershed_edges_bin[:chull.shape[0], :chull.shape[1]]
+        final_image[:watershed_cull.shape[0], :watershed_cull.shape[1]] = watershed_cull
+        return final_image
     elif mode == 3:  # never use this one it just never ends
         # thresholding edges for convex hull with threshold to remove as much noise as possible
         edges[edges >= 0.8] = 1
         edges[edges < 0.8] = 0
-        return concave_hull(edges)
+        chull = concave_hull(edges)
+        final_image[:chull.shape[0], :chull.shape[1]] = chull
+        return final_image
     else:
         edges[edges != 0] = 1
         edges = dilation(edges)
@@ -115,7 +125,9 @@ def edge_segmentation(img, mode=4):
         image = dilation(cv[0])
         image = dilation(image)
         image = dilation(image)
-        return binary_fill_holes(image)
+        image = binary_fill_holes(image)
+        final_image[:image.shape[0], :image.shape[1]] = image
+        return final_image
 
 
 # -------------------------------------------------------------------------------------

@@ -64,7 +64,8 @@ def get_segmentation_mask(mode, img=None, c=1.0):
     if mode == 'none' or mode is None or img is None:
         return np.ones((IM_SIZE, IM_SIZE), dtype=np.float32) * c
     elif mode == 'edge':
-        return segment_edges(img) * c
+        return edge_segmentation(img) * c
+        # return segment_edges(img) * c
     elif mode == 'face':
         return segment_faces(img) * c
 
@@ -198,7 +199,7 @@ def main():
 def main_gui(content_image, style_image):
     content = io.imread(content_image) / 255.0
     style = io.imread(style_image) / 255.0
-    segm_mask = get_segmentation_mask('face', content, 0.2)
+    segm_mask = get_segmentation_mask('edge', content, 0.2)
     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
     segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
