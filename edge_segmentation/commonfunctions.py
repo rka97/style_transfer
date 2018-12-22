@@ -14,7 +14,7 @@ from skimage.util import random_noise
 from scipy.signal import convolve2d
 from scipy import fftpack
 from skimage.filters import median
-from skimage.feature import canny
+from skimage.feature import canny, peak_local_max
 from skimage.filters import sobel_h, sobel, sobel_v, roberts, prewitt
 
 

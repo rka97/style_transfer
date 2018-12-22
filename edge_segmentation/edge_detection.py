@@ -1,13 +1,17 @@
 import cv2
+from skimage import img_as_float
 from numpy.linalg import eig
-from commonfunctions import *
+from .commonfunctions import *
 from numpy import pi, exp, sqrt
 from scipy import ndimage as ndi
 from skimage.draw import polygon
 from skimage.filters import rank
+from scipy.spatial import Delaunay
 from numpy.linalg import multi_dot
 from skimage.util import img_as_ubyte
-from skimage.morphology import watershed, disk
+from skimage.segmentation import chan_vese
+from scipy.ndimage import binary_fill_holes
+from skimage.morphology import watershed, disk, dilation
 from sklearn.feature_extraction.image import extract_patches
 
 
@@ -24,77 +28,152 @@ def gaussian_kernel(n):
     return kernel
 
 
-def get_gradient(patch):
-    gx = cv2.Sobel(np.float32(patch), cv2.CV_32F, 1, 0).reshape(-1)
-    gy = cv2.Sobel(np.float32(patch), cv2.CV_32F, 0, 1).reshape(-1)
-    G = np.zeros((gy.size, 2))
-    G[:, 0] = gx
-    G[:, 1] = gy
-    # G = np.concatenate((gx,gy), axis=1)
+def get_gradient(patch, n):
+    gx = cv2.Sobel(np.float32(patch), cv2.CV_32F, 1, 0, ksize=n)
+    gy = cv2.Sobel(np.float32(patch), cv2.CV_32F, 0, 1, ksize=n)
+    G = np.stack((gx, gy), axis=-1)
     return G
 
 
-def edge_detection(content, n):
+def edge_detection(content, n=5, strength_threshold=0.04, coherence_threshold=0.5):
     content = rgb2gray(content)
-    patches = extract_patches(content, patch_shape=(n, n), extraction_step=1)
-    patches = patches.reshape((-1, n, n))
     W = gaussian_kernel(n)
-    strength_threshold = 0.04
-    coherent_threshold = 0.5
-    img = np.zeros(patches.shape[0])
-    for k in range(0, patches.shape[0]):  # patches.shape[0]=>patches count
-        # for each patch -corresponding to a pixel- calc gradient for all pixels
-        Gk = get_gradient(patches[k])
-        GWG = multi_dot([Gk.T, W, Gk])
-        e_val, e_vect = eig(GWG)
-        if e_val[0] > e_val[1]:
+
+    G = get_gradient(content, n)
+    patches = extract_patches(G, patch_shape=(n, n, 2), extraction_step=1)
+    patches = patches.reshape((-1, n**2, 2))
+
+    l = list(patches)
+    img = np.zeros((len(l)))
+    GWG = [multi_dot([Gk.T, W, Gk]) for Gk in l]
+
+    eigen = [eig(GWGi) for GWGi in GWG]
+    e_val, e_vect = zip(*eigen)
+    e_val = np.asarray(e_val, dtype=np.float64)
+    e_vect = np.asarray(e_vect, dtype=np.float64)
+    for k in range(0, len(eigen)):
+        if e_val[k][0] > e_val[k][1]:
             largest = 0  # indx, = np.where(e_val == largest_lambda)
         else:
             largest = 1
-        x, y = e_vect[largest, 0], e_vect[largest, 1]  # e_vect corresponding to largest e_val
+        x, y = e_vect[k][largest, 0], e_vect[k][largest, 1]  # e_vect corresponding to largest e_val
         if x != 0:
             angle = math.degrees(math.atan(y/x))
         else:
             angle = 90
-        strength = math.sqrt(e_val[largest])
+        strength = math.sqrt(e_val[k][largest])
 
-        dominator = float(sqrt(e_val[largest]) + sqrt(e_val[1-largest]))
+        dominator = float(sqrt(e_val[k][largest]) + sqrt(e_val[k][1-largest]))
         if dominator != 0:
-            coherent = (sqrt(e_val[largest])-sqrt(e_val[1-largest]))/dominator
-        if strength >= strength_threshold and coherent >= coherent_threshold:
+            coherent = (sqrt(e_val[k][largest])-sqrt(e_val[k][1-largest])) / dominator
+        if strength >= strength_threshold and coherent >= coherence_threshold:
             img[k] = strength
     img = img.reshape(int(sqrt(patches.shape[0])), int(sqrt(patches.shape[0])))
     return img
 
 
-def main():
-    IM_SIZE = 400
-    content = io.imread('../images/emilia2.jpg') / 255.0
-    content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
+def edge_segmentation(img, mode=4):
     root_n = 5
-    edge_chull = edge_detection(content, root_n)  # root_n should be odd number
-    edge_watershed = edge_chull.copy()
+    edges = edge_detection(img, root_n, strength_threshold=8, coherence_threshold=0.5)  # root_n should be odd number #8-0.5
 
-    # thresholding edges for watershed on edges with low threshold to include as much edges as possible
-    edge_watershed[edge_watershed >= 0.2] = 1
-    edge_watershed[edge_watershed < 0.2] = 0
-    # thresholding edges for convex hull with threshold to remove as much noise as possible
-    edge_chull[edge_chull >= 0.8] = 1
-    edge_chull[edge_chull < 0.8] = 0
+    if mode == 0:
+        # thresholding edges for convex hull with threshold to remove as much noise as possible
+        edges[edges >= 0.8] = 1
+        edges[edges < 0.8] = 0
+        return convex_hull(edges)
+    elif mode == 1:
+        # thresholding edges for watershed on edges with low threshold to include as much edges as possible
+        edges[edges >= 0.2] = 1
+        edges[edges < 0.2] = 0
+        return watershed_edges(edges)
+    elif mode == 2:
+        edge_chull = edges
+        edge_watershed = edge_chull.copy()
 
-    show_images([content, edge_chull, edge_watershed], ["content", "edges convex hull", "edges watershed"])
+        # thresholding edges for convex hull with threshold to remove as much noise as possible
+        edge_chull[edge_chull >= 0.8] = 1
+        edge_chull[edge_chull < 0.8] = 0
+        # thresholding edges for watershed on edges with low threshold to include as much edges as possible
+        edge_watershed[edge_watershed >= 0.2] = 1
+        edge_watershed[edge_watershed < 0.2] = 0
 
-    # running different filling algorithms
-    chull = convex_hull(edge_chull)
-    watershed_content_bin = watershed_content(content)
-    watershed_edges_bin = watershed_edges(edge_watershed)
+        chull = convex_hull(edge_chull)
+        watershed_edges_bin = watershed_edges(edge_watershed)
+        return chull * watershed_edges_bin[:chull.shape[0], :chull.shape[1]]
+    elif mode == 3:  # never use this one it just never ends
+        # thresholding edges for convex hull with threshold to remove as much noise as possible
+        edges[edges >= 0.8] = 1
+        edges[edges < 0.8] = 0
+        return concave_hull(edges)
+    else:
+        edges[edges != 0] = 1
+        edges = dilation(edges)
+        # Feel free to play around with the parameters to see how they impact the result
+        cv = chan_vese(edges, mu=0.1, lambda1=0.06, lambda2=1, tol=1e-3, max_iter=2000,
+                    dt=0.52, init_level_set="checkerboard", extended_output=True)
 
-    show_images(
-        [content, chull, watershed_content_bin, watershed_edges_bin],
-        ["content", "convex hull filling", "watershed on content binaraized", "watershed on edges binaraized"]
-    )
+        image = dilation(cv[0])
+        image = dilation(image)
+        image = dilation(image)
+        return binary_fill_holes(image)
+# -------------------------------------------------------------------------------------
+# concave hull using alpha shape algorithm
+# alogrithm was taken from stackoverflow response to question: Calculate bounding polygon of alpha shape from the Delaunay triangulation
+# link to answer stackoverflow post -> https://stackoverflow.com/a/50159452/7293149
+def alpha_shape(points, alpha, only_outer=True):
+    assert points.shape[0] > 3, "Need at least four points"
+
+    def add_edge(edges, i, j):
+        if (i, j) in edges or (j, i) in edges:
+            # already added
+            assert (j, i) in edges, "Can't go twice over same directed edge right?"
+            if only_outer:
+                # if both neighboring triangles are in shape, it's not a boundary edge
+                edges.remove((j, i))
+            return
+        edges.add((i, j))
+
+    tri = Delaunay(points)
+    edges = set()
+    # Loop over triangles:
+    # ia, ib, ic = indices of corner points of the triangle
+    for ia, ib, ic in tri.vertices:
+        pa = points[ia]
+        pb = points[ib]
+        pc = points[ic]
+        # Computing radius of triangle circumcircle
+        # www.mathalino.com/reviewer/derivation-of-formulas/derivation-of-formula-for-radius-of-circumcircle
+        a = np.sqrt((pa[0] - pb[0]) ** 2 + (pa[1] - pb[1]) ** 2)
+        b = np.sqrt((pb[0] - pc[0]) ** 2 + (pb[1] - pc[1]) ** 2)
+        c = np.sqrt((pc[0] - pa[0]) ** 2 + (pc[1] - pa[1]) ** 2)
+        s = (a + b + c) / 2.0
+        area = np.sqrt(s * (s - a) * (s - b) * (s - c))
+        circum_r = a * b * c / (4.0 * area)
+        if circum_r < alpha:
+            add_edge(edges, ia, ib)
+            add_edge(edges, ib, ic)
+            add_edge(edges, ic, ia)
+    return edges
 
 
+def concave_hull(img):
+    image = img.copy()
+    points = []
+    for j in range(image.shape[1]):
+        for i in range(image.shape[0]):
+            if image[i, j] == 1:
+                points.append((j, i))
+
+    points = np.array(points)
+    edges = alpha_shape(points, alpha=1.8, only_outer=True)
+    edges = np.array([edge for edge in edges])
+    r = edges[:, 1]
+    c = edges[:, 0]
+    rr, cc = polygon(r, c)
+    image[rr, cc] = 1
+    return image
+# -------------------------------------------------------------------------------------
+# using graham scan algorithm to construct convex hull and fill it
 def right_turn(p1, p2, p3):
     if (p3[1]-p1[1])*(p2[0]-p1[0]) >= (p2[1]-p1[1])*(p3[0]-p1[0]):
         return False
@@ -135,30 +214,8 @@ def convex_hull(img):
     rr, cc = polygon(r, c)
     image[rr, cc] = 1
     return image
-
-
-def watershed_content(img):
-    image = img.copy()
-    image = rgb2gray(image)
-    image = img_as_ubyte(image)
-    markers = rank.gradient(image, disk(5)) < 20
-    markers = ndi.label(markers)[0]
-    gradient = rank.gradient(image, disk(2))
-    labels = watershed(gradient, markers)
-    show_images([image, labels], ["content", "content's labels"])
-    img_hist = histogram(labels, nbins=256)
-    for i in range(img_hist[0].shape[0]):
-        if img_hist[0][i] < int(round(0.00625 * labels.shape[0] * labels.shape[1])):
-            labels[labels == img_hist[1][i]] = 0
-
-    labels[labels <= 7] = 1
-    labels[labels > 7] = 0
-    h, w = labels.shape[:2]
-    mask = np.zeros((h+2, w+2), np.uint8)
-    cv2.floodFill(labels, mask, (0, 0), 255)
-    return np.invert(labels)
-
-
+# -------------------------------------------------------------------------------------
+# using skimage watershed algorithm with histogram thresholding to remove background regions from image 
 def watershed_edges(img):
     image = img.copy()
     image = img_as_ubyte(image)
@@ -166,9 +223,20 @@ def watershed_edges(img):
     markers = ndi.label(markers)[0]
     gradient = rank.gradient(image, disk(2))
     labels = watershed(gradient, markers)
-    show_images([image, labels], ["edges", "edges' labels"])
-    labels[labels <= 7] = 1
-    labels[labels > 7] = 0
-    return np.invert(labels)
+    # show_images([image, labels], ["edges", "edges' labels"])
+    labels[labels <= 4] = 1
+    labels[labels > 4] = 0
+    labels = np.invert(labels)
+    labels[labels == -1] = 1
+    labels[labels == -2] = 0
+    return labels
 
-main()
+
+# def main():
+#     IM_SIZE = 400
+#     content = io.imread('../images/cow.jpg') / 255.0
+#     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
+#     filled_edges = edge_segmentation(content)
+#     show_images([content, filled_edges])
+
+# main()

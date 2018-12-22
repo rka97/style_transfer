@@ -10,6 +10,7 @@ from skimage.feature import canny
 from skimage.segmentation import *
 from scipy.ndimage import binary_fill_holes
 from timeit import default_timer as timer
+from edge_segmentation.edge_detection import *
 
 LMAX = 3
 IM_SIZE = 400
@@ -48,8 +49,9 @@ def get_segmentation_mask(mode, img=None, c=1.0):
     if mode == 'none' or mode is None or img is None:
         return np.ones((IM_SIZE, IM_SIZE), dtype=np.float32) * c
     elif mode == 'edge':
-        edge = (canny(rgb2gray(img), sigma=0.5, low_threshold=0.0, high_threshold=0.3) * 1.0).astype(np.float32)
-        return binary_fill_holes(edge)
+        return edge_segmentation(img)
+        # edge = (canny(rgb2gray(img), sigma=0.5, low_threshold=0.0, high_threshold=0.3) * 1.0).astype(np.float32)
+        # return binary_fill_holes(edge)
     elif mode == 'face':
         return segment_faces(img)
     elif mode == 'vese':
