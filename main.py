@@ -120,7 +120,7 @@ def style_transfer(content, style, segmentation_mask):
         print('Scale ', L)
         current_size = style_arr[L].shape[0]
         style_L_sx, style_L_sy, _ = style_arr[L].shape
-        X = random_noise(X, mode='gaussian', var=20/250.0)
+        X = random_noise(X, mode='gaussian', var=20 / 250.0)
         # X = X + np.random.normal(0, np.max(X), size=X.shape)
         Xbefore = X.copy()
         for n in range(PATCH_SIZES.size):  # over patch size n
@@ -177,8 +177,8 @@ def style_transfer(content, style, segmentation_mask):
 
 
 def main():
-    content = io.imread('paper_images/Venice.jpg') / 255.0
-    style = io.imread('paper_images/emma.jpg') / 255.0
+    content = io.imread('images/paper_images/Venice.jpg') / 255.0
+    style = io.imread('images/paper_images/starry-night - small.jpg') / 255.0
     segm_mask = get_segmentation_mask('edge', content, 1.0)
     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)

@@ -117,8 +117,8 @@ def GrabCut(img, trimap):
     return img
 
 
-def main():
-    img = io.imread('a.png')
+def test():
+    img = io.imread('../images/gmm_test.png')
     img = (img.astype(np.float)) / 255.0
     l, m, n = img.shape
     # start with trimap where everything out of the bounding box is 0(background), everything inside is -1(unknown),
@@ -133,4 +133,3 @@ def main():
     trimap[x:x + w, y:y + h] = 1
     # print(trimap)
     GrabCut(img, trimap)
-main()

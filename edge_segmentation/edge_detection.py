@@ -17,11 +17,11 @@ from sklearn.feature_extraction.image import extract_patches
 
 def gaussian_kernel(n):
     # n must be odd number
-    k = round((n-1)/2)  # n=2k+1 => k=(n-1)/2
+    k = round((n - 1) / 2)  # n=2k+1 => k=(n-1)/2
     # generate a n*n gaussian kernel with mean=0 and sigma = s
     s = 1
     # create one vector of gaussian distribution
-    probs = [exp(-z*z/(2*s*s))/sqrt(2*pi*s*s) for z in range(-k, k+1)]
+    probs = [exp(-z * z / (2 * s * s)) / sqrt(2 * pi * s * s) for z in range(-k, k + 1)]
     kernel = np.outer(probs, probs)  # construct 2d-gaussian kernel
     kernel = kernel.reshape(-1)  # vectorize it
     kernel = np.diag(kernel)  # make it diagonal matrix
@@ -58,14 +58,14 @@ def edge_detection(content, n=5, strength_threshold=0.04, coherence_threshold=0.
             largest = 1
         x, y = e_vect[k][largest, 0], e_vect[k][largest, 1]  # e_vect corresponding to largest e_val
         if x != 0:
-            angle = math.degrees(math.atan(y/x))
+            angle = math.degrees(math.atan(y / x))
         else:
             angle = 90
         strength = math.sqrt(e_val[k][largest])
 
-        dominator = float(sqrt(e_val[k][largest]) + sqrt(e_val[k][1-largest]))
+        dominator = float(sqrt(e_val[k][largest]) + sqrt(e_val[k][1 - largest]))
         if dominator != 0:
-            coherent = (sqrt(e_val[k][largest])-sqrt(e_val[k][1-largest])) / dominator
+            coherent = (sqrt(e_val[k][largest]) - sqrt(e_val[k][1 - largest])) / dominator
         if strength >= strength_threshold and coherent >= coherence_threshold:
             img[k] = strength
     img = img.reshape(int(sqrt(patches.shape[0])), int(sqrt(patches.shape[0])))
@@ -110,12 +110,14 @@ def edge_segmentation(img, mode=4):
         edges = dilation(edges)
         # Feel free to play around with the parameters to see how they impact the result
         cv = chan_vese(edges, mu=0.1, lambda1=0.06, lambda2=1, tol=1e-3, max_iter=2000,
-                    dt=0.52, init_level_set="checkerboard", extended_output=True)
+                       dt=0.52, init_level_set="checkerboard", extended_output=True)
 
         image = dilation(cv[0])
         image = dilation(image)
         image = dilation(image)
         return binary_fill_holes(image)
+
+
 # -------------------------------------------------------------------------------------
 # concave hull using alpha shape algorithm
 # alogrithm was taken from stackoverflow response to question: Calculate bounding polygon of alpha shape from the Delaunay triangulation
@@ -172,10 +174,12 @@ def concave_hull(img):
     rr, cc = polygon(r, c)
     image[rr, cc] = 1
     return image
+
+
 # -------------------------------------------------------------------------------------
 # using graham scan algorithm to construct convex hull and fill it
 def right_turn(p1, p2, p3):
-    if (p3[1]-p1[1])*(p2[0]-p1[0]) >= (p2[1]-p1[1])*(p3[0]-p1[0]):
+    if (p3[1] - p1[1]) * (p2[0] - p1[0]) >= (p2[1] - p1[1]) * (p3[0] - p1[0]):
         return False
     return True
 
@@ -190,7 +194,7 @@ def graham_scan(p):
             del l_upper[-2]
     l_lower = [p[-1], p[-2]]  # Initialize the lower part
     # Compute the lower part of the hull
-    for i in range(len(p)-3, -1, -1):
+    for i in range(len(p) - 3, -1, -1):
         l_lower.append(p[i])
         while len(l_lower) > 2 and not right_turn(l_lower[-1], l_lower[-2], l_lower[-3]):
             del l_lower[-2]
@@ -214,8 +218,10 @@ def convex_hull(img):
     rr, cc = polygon(r, c)
     image[rr, cc] = 1
     return image
+
+
 # -------------------------------------------------------------------------------------
-# using skimage watershed algorithm with histogram thresholding to remove background regions from image 
+# using skimage watershed algorithm with histogram thresholding to remove background regions from image
 def watershed_edges(img):
     image = img.copy()
     image = img_as_ubyte(image)
@@ -232,11 +238,9 @@ def watershed_edges(img):
     return labels
 
 
-# def main():
-#     IM_SIZE = 400
-#     content = io.imread('../images/cow.jpg') / 255.0
-#     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
-#     filled_edges = edge_segmentation(content)
-#     show_images([content, filled_edges])
-
-# main()
+def test_ed():
+    IM_SIZE = 400
+    content = io.imread('../images/cow.jpg') / 255.0
+    content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
+    filled_edges = edge_segmentation(content)
+    show_images([content, filled_edges])
