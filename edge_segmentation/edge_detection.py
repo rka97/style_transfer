@@ -1,5 +1,5 @@
 from numpy.linalg import eig
-from commonfunctions import *
+from .commonfunctions import *
 from sklearn.feature_extraction.image import extract_patches
 from numpy.linalg import multi_dot
 import cv2
@@ -62,13 +62,13 @@ def edge_detection(content, n):
     return img
 
 
-def main():
-    IM_SIZE = 400
-    content = io.imread('../paper_images/Spadena_Witch_House.jpg') / 255.0
-    content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
-    root_n = 5
-    edge = edge_detection(content, root_n)  # root_n should be odd number
-    show_images([edge])
+# def main():
+#     IM_SIZE = 400
+#     content = io.imread('../paper_images/Spadena_Witch_House.jpg') / 255.0
+#     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
+#     root_n = 5
+#     edge = edge_detection(content, root_n)  # root_n should be odd number
+#     show_images([edge])
 
 
-main()
+# main()
