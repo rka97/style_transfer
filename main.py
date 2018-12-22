@@ -6,19 +6,23 @@ from fast_nearest_neighbor.fast_nearest_neighbor import *
 from sklearn.feature_extraction.image import extract_patches
 from sklearn.neighbors import NearestNeighbors
 # from sklearn.decomposition import PCA
+from skimage.filters import gaussian
 from skimage.feature import canny
+from skimage.util import view_as_windows, pad, random_noise
 from skimage.segmentation import *
 from scipy.ndimage import binary_fill_holes
 from timeit import default_timer as timer
 from edge_segmentation.edge_detection import *
+from skimage.segmentation import active_contour
 
 LMAX = 3
 IM_SIZE = 400
-PATCH_SIZES = np.array([33, 21, 13])
-SAMPLING_GAPS = np.array([28, 18, 8])
+PATCH_SIZES = np.array([33, 21, 13, 9, 5])
+SAMPLING_GAPS = np.array([28, 18, 8, 5, 3])
 IALG = 10
 IRLS_it = 3
 IRLS_r = 0.8
+PADDING_MODE = 'constant'
 
 
 def build_gaussian_pyramid(img, L):
@@ -30,30 +34,45 @@ def build_gaussian_pyramid(img, L):
 
 
 def segment_edges(img):
-    return 4  # 100% edge segmentation
+    E = canny(rgb2gray(img), sigma=1, low_threshold=0.2, high_threshold=0.9)
+    show_images([E])
+    return 1.0 * (gaussian(1.0 * E + morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=E, smoothing=1), sigma=5) > 0.3)
 
 
 def segment_faces(img):
     face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
     gray_img = (rgb2gray(img) * 255).astype(np.uint8)
-    faces = face_cascade.detectMultiScale(gray_img, 1.3, 5)
+    faces = face_cascade.detectMultiScale(gray_img, 1.25, 5)
+    temp_img = (img.copy() * 255).astype(np.uint8)
     if len(faces) == 0:
         print("Found no faces.")
+        return np.zeros_like(gray_img)
     for (x, y, w, h) in faces:
         print(x, y, w, h)
-        cv2.rectangle(gray_img, (x, y), (x + w, y + h), (255, 0, 0), -1)
-    return gray_img / 255.0
+        bgdModel = np.zeros((1, 65), np.float64)
+        fgdModel = np.zeros((1, 65), np.float64)
+        mask = np.zeros_like(gray_img).astype(np.uint8)
+        # mask[x:x + w, y:y + h] = 255
+        # return mask / 255.0
+        mask[:] = 2
+        mask[x:x + w, y:y + h] = 3
+        cv2.grabCut(temp_img, mask=mask, rect=(x, y, w, h), bgdModel=bgdModel, fgdModel=fgdModel, iterCount=10, mode=cv2.GC_INIT_WITH_MASK)
+        mask_min = np.min(mask)
+        mask_max = np.max(mask)
+        mask = (mask - mask_min) / (mask_max - mask_min)
+        return gaussian(mask, 5)
+    # return gray_img / 255.0
 
 
 def get_segmentation_mask(mode, img=None, c=1.0):
     if mode == 'none' or mode is None or img is None:
         return np.ones((IM_SIZE, IM_SIZE), dtype=np.float32) * c
     elif mode == 'edge':
-        return edge_segmentation(img)
+        return edge_segmentation(img) * c
         # edge = (canny(rgb2gray(img), sigma=0.5, low_threshold=0.0, high_threshold=0.3) * 1.0).astype(np.float32)
         # return binary_fill_holes(edge)
     elif mode == 'face':
-        return segment_faces(img)
+        return segment_faces(img) * c
     elif mode == 'vese':
         segm = 1 - chan_vese(rgb2gray(img))
         return (segm * 1.0).astype(np.float32)
@@ -64,13 +83,12 @@ def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors, projection_m
     sampling_gap = SAMPLING_GAPS[p_index]
     current_size = X.shape[0]
     # Extracting Patches
+    X_patches_raw_cpy = X_patches_raw.copy()
     X_patches = X_patches_raw.reshape(-1, p_size * p_size * 3)
     npatches = X_patches.shape[0]
-
-    # projecting X to same dimention as style patches
-    if p_size == 13 or p_size == 21:
+    # Projecting X to same dimention as style patches
+    if p_size <= 21:
         X_patches = project(X_patches, projection_matrix)
-
     # Computing Nearest Neighbors
     distances, indices = neighbors.kneighbors(X_patches)
     distances += 0.0001
@@ -95,8 +113,9 @@ def style_transfer(content, style, segmentation_mask):
     content_arr = build_gaussian_pyramid(content, LMAX)
     style_arr = build_gaussian_pyramid(style, LMAX)
     segm_arr = build_gaussian_pyramid(segmentation_mask, LMAX)
-    X = content_arr[LMAX - 1] + np.random.normal(0, 50, size=content_arr[LMAX - 1].shape) / 255.0
-    X = np.clip(X, 0.0, 1.0).astype(np.float32)
+    # X = content_arr[LMAX - 1] + np.random.normal(0, 50, size=content_arr[LMAX - 1].shape) / 255.0
+    X = random_noise(content_arr[LMAX - 1], mode='gaussian', var=20)
+    # X = np.clip(X, 0.0, 1.0).astype(np.float32)
     # Set up Content Fusion constants.
     fus_const1 = []
     fus_const2 = []
@@ -109,11 +128,25 @@ def style_transfer(content, style, segmentation_mask):
     for L in range(LMAX - 1, -1, -1):  # over scale L
         print('Scale ', L)
         current_size = style_arr[L].shape[0]
+        style_L_sx, style_L_sy, _ = style_arr[L].shape
+        X = random_noise(X, mode='gaussian', var=20/250.0)
+        # X = X + np.random.normal(0, np.max(X), size=X.shape)
         Xbefore = X.copy()
         for n in range(PATCH_SIZES.size):  # over patch size n
             p_size = PATCH_SIZES[n]
             print('Patch Size', p_size)
-            style_patches = extract_patches(style_arr[L], patch_shape=(p_size, p_size, 3),
+            # We should pad the image here to ensure dimension
+            # SAMPLING_GAPS[n] * (npatchx - 1) <= style_L_sx - p_size
+            npatchx = int((style_L_sx - p_size) / SAMPLING_GAPS[n] + 1)
+            padding = p_size - (style_L_sx - npatchx * SAMPLING_GAPS[n])
+            # new_size = style_L_sx + padding
+            # padding = 0
+            padding_arr = ((0, padding), (0, padding), (0, 0))
+            current_style = pad(style_arr[L], padding_arr, mode=PADDING_MODE)
+            X = pad(X, padding_arr, mode=PADDING_MODE)
+            const1 = pad(fus_const1[L], padding_arr, mode=PADDING_MODE)
+            const2 = pad(fus_const2[L], padding_arr, mode=PADDING_MODE)
+            style_patches = extract_patches(current_style, patch_shape=(p_size, p_size, 3),
                                             extraction_step=SAMPLING_GAPS[n])
             npatchx, npatchy, _, _, _, _ = style_patches.shape
             npatches = npatchx * npatchy
@@ -122,30 +155,31 @@ def style_transfer(content, style, segmentation_mask):
             njobs = 1
             if (L == 0) or (L == 1 and p_size <= 13):
                 njobs = -1
-            # neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='brute', n_jobs=njobs).fit(style_patches)
-            # style_patches = style_patches.reshape((-1, p_size, p_size, 3))
-
             projection_matrix = 0
             # for small patches perform PCA
-            if p_size == 13 or p_size == 21:
-                new_stlye_patches, projection_matrix = pca(style_patches)
-                neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='kd_tree', n_jobs=njobs).fit(new_stlye_patches)
+            if p_size <= 21:
+                new_style_patches, projection_matrix = pca(style_patches)
+                neighbors = NearestNeighbors(n_neighbors=1, p=2, n_jobs=njobs).fit(new_style_patches)
             else:
-                neighbors = NearestNeighbors(n_neighbors=1, p=2, algorithm='kd_tree', n_jobs=njobs).fit(style_patches)
+                neighbors = NearestNeighbors(n_neighbors=1, p=2, n_jobs=njobs).fit(style_patches)
             style_patches = style_patches.reshape((-1, p_size, p_size, 3))
-
             for k in range(IALG):  # over # of algorithm iterations IALG
                 # Steps 1 & 2: Patch-Extraction and and Robust Patch Aggregation
                 X_patches_raw = extract_patches(X, patch_shape=(p_size, p_size, 3), extraction_step=SAMPLING_GAPS[n])
                 for i in range(IRLS_it):
                     solve_irls(X, X_patches_raw, n, style_patches, neighbors, projection_matrix)
                 # Step 3: Content Fusion
-                X = fus_const2[L] * (X + fus_const1[L])
+                X = const2 * (X + const1)
                 # Step 4: Color Transfer
-                X = imhistmatch2(X, style)
+                X = imhistmatch(X, style)
                 # Step 5: Denoising
-                X = denoise(X, sigma_r=0.17, sigma_s=20)
-        # show_images([Xbefore, X])
+                # Xpden = X.copy()
+                X[:style_L_sx, :style_L_sx, :] = denoise(X[:style_L_sx, :style_L_sx, :], sigma_r=0.17, sigma_s=15)
+                # show_images([Xpden, X])
+            # print(X.shape)
+            X = X[:style_L_sx, :style_L_sx, :]
+            # X = cv2.resize()
+        show_images([Xbefore, X])
         # Upscale X
         if (L > 0):
             sizex, sizey, _ = content_arr[L - 1].shape
@@ -153,31 +187,50 @@ def style_transfer(content, style, segmentation_mask):
     return X
 
 
+def pad_img(img, padding_size):
+    if (img.ndim == 3):
+        new_img = np.zeros((img.shape[0] + padding_size, img.shape[1] + padding_size, img.shape[2]))
+        new_img[0:img.shape[0], 0:img.shape[1], :] = img
+    else:
+        new_img = np.zeros((img.shape[0] + padding_size, img.shape[1] + padding_size))
+        new_img[0:img.shape[0], 0:img.shape[1]] = img
+    return new_img
+
+
 def main():
-    content = io.imread('images/emilia2.jpg') / 255.0
-    style = io.imread('images/van_gogh.jpg') / 255.0
-    segm_mask = get_segmentation_mask('face', content, 0.0)
+    content = io.imread('paper_images/Venice.jpg') / 255.0
+    style = io.imread('paper_images/emma.jpg') / 255.0
+    segm_mask = get_segmentation_mask('edge', content, 1.0)
+    # print(segm_mask)
     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
+    # content = pad_img(content, 100)
+    # content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
+    # segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
+    # segm_mask = pad_img(segm_mask, 100)
     segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
     show_images([content, segm_mask, style])
+    original_content = content.copy()
     content = imhistmatch(content, style)
     start = timer()
+    # X = (style_transfer(content, style, segm_mask))[0:400, 0:400, :]
     X = style_transfer(content, style, segm_mask)
     end = timer()
     print("Style Transfer took ", end - start, " seconds!")
     # Finished. Just show the images
-    show_images([content, segm_mask, style, X])
+    show_images([original_content, segm_mask, style])
+    show_images([X])
 
-def mainGui(content_image, stlye_image):
+
+def main_gui(content_image, style_image):
     content = io.imread(content_image) / 255.0
-    style = io.imread(stlye_image) / 255.0
-    segm_mask = get_segmentation_mask('face', content, 0.0)
+    style = io.imread(style_image) / 255.0
+    segm_mask = get_segmentation_mask('face', content, 0.2)
     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
     segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
     # show_images([content, segm_mask, style])
-    content = imhistmatch(content, style)
+    content = imhistmatch2(content, style)
     start = timer()
     X = style_transfer(content, style, segm_mask)
     end = timer()
@@ -187,4 +240,4 @@ def mainGui(content_image, stlye_image):
     # io.imsave("x.png", X_fixed)
     return X_fixed
 
-# main()
+main()

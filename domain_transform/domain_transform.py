@@ -50,16 +50,17 @@ def denoise(img, sigma_r=0.77, sigma_s=40):
         t_img = np.transpose(t_img, axes=(1, 0, 2))  # (l, m, n)
     return t_img
 
-
-# def main():
-#     img = io.imread('../images/cow.jpg') / 255.0
-#     original = np.copy(img)
-#     # the opencv function
-#     # dst = cv2.edgePreservingFilter(src, flags=1, sigma_s=60, sigma_r=0.4)
-#     # typ =np.info(img.dtype).max  #in case of a binary image
-#     img = img.astype(np.float32)
-#     img_bilateral = cv2.bilateralFilter(img, 5, 50, 50)
-#     denoised_img = denoise(img)
-#     show_images([img, img_bilateral, denoised_img])
+"""
+def main():
+    img = io.imread('../images/cow.jpg') / 255.0
+    original = np.copy(img)
+    # the opencv function
+    dst = cv2.edgePreservingFilter(src, flags=1, sigma_s=60, sigma_r=0.4)
+    # typ =np.info(img.dtype).max  #in case of a binary image
+    img = img.astype(np.float32)
+    img_bilateral = cv2.bilateralFilter(img, 5, 50, 50)
+    denoised_img = denoise(img)
+    show_images([img, img_bilateral, denoised_img])
 
 # main()
+"""

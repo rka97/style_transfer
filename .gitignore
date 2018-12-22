@@ -58,3 +58,6 @@ target/
 
 # Jupyter Notebooks
 .ipynb_checkpoints
+
+# VS code
+.vscode/

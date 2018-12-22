@@ -6,6 +6,27 @@ from .commonfunctions import *
 from skimage.exposure import cumulative_distribution
 
 
+#color transfer with REAL histogram matching using interpolation
+def color_transfer(content, style):
+    transfered = np.copy(content)
+    #for each channel of the content, match the cum_histogram with the style's one
+    for i in range (0, content.shape[2]):    
+        content_channel = content[:,:,i].flatten()
+        style_channel = style[:,:,i].flatten()
+         #calculate histogram for both content and style
+        content_values, content_indices, content_counts = np.unique(content_channel, return_inverse=True, return_counts=True)
+        style_values, style_counts = np.unique(style_channel, return_counts=True)
+        #calculate cummulative histogram
+        content_cumhist = np.cumsum(content_counts)
+        style_cumhist = np.cumsum(style_counts)
+        #normalize it
+        content_cumhist = content_cumhist / max(content_cumhist) 
+        style_cumhist = style_cumhist / max(style_cumhist)
+        #match using interpolation
+        matched = np.interp(content_cumhist, style_cumhist, style_values)
+        transfered[:,:,i] = matched[content_indices].reshape(content[:,:,i].shape)
+    return transfered
+
 # does color transfer through converting an image to the LAB color space, changing
 # the mean and variance there, then converting the image back into RGB
 def color_transfer_lab(content, style):

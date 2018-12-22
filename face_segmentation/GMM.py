@@ -1,6 +1,7 @@
 import skimage.io as io
 import numpy as np
 from sklearn.mixture import GaussianMixture
+import graph_tool.all as gt
 
 
 def init_GMM(img, trimap):
@@ -8,7 +9,7 @@ def init_GMM(img, trimap):
     img_bk = np.zeros((np.count_nonzero(trimap == 0), n))
     # print(img_bk.shape)
     img_fr = np.zeros((np.count_nonzero(trimap == 1), n))
-    img2d = img.reshape(l*m, n)
+    img2d = img.reshape(l * m, n)
     # print(img_fr.shape)
     # how to linearize this np.where(??)
     # this causes a problem as it creates one extra component (the 0 values) that affects the fitting =>done
@@ -17,7 +18,7 @@ def init_GMM(img, trimap):
     k = 0
     bk_indexes = np.zeros((img_bk.shape[0]))
     fr_indexes = np.zeros((img_fr.shape[0]))
-    for i in range(l*m):
+    for i in range(l * m):
         if (trimap[i] == 0):
             img_bk[j, :] = img2d[i, :]
             bk_indexes[j] = i
@@ -29,7 +30,7 @@ def init_GMM(img, trimap):
     return img_bk, img_fr, img2d, bk_indexes, fr_indexes
 
 
-def GMM(img, trimap, K):
+def GMM(img, trimap):
     img_bk, img_fr, img2d, bk_indexes, fr_indexes = init_GMM(img, trimap)
     l, m, n = img.shape
     # define 2 GMMs one for background, one for foreground each with k = 5
@@ -37,13 +38,13 @@ def GMM(img, trimap, K):
     # should the convariance be regularized?
     # weights are set to default (kmeans)
     # creating and fitting 2 models for the background and forground
-    gmm_fr = GaussianMixture(n_components=5, covariance_type="full", verbose=2)
-    print('\n')
-    gmm_bk = GaussianMixture(n_components=5, covariance_type="full", verbose=2)
+    gmm_fr = GaussianMixture(n_components=5, covariance_type="full")
+    gmm_bk = GaussianMixture(n_components=5, covariance_type="full")
     gmm_fr = gmm_fr.fit(X=img_fr)
     gmm_bk = gmm_bk.fit(X=img_bk)
     labels_fr = gmm_fr.predict(X=img_fr)
     labels_bk = gmm_bk.predict(X=img_bk)
+    K = np.zeros((l * m))
     # update k
     for i in range(img_fr.shape[0]):
         K[int(fr_indexes[i])] = labels_fr[i]
@@ -52,7 +53,7 @@ def GMM(img, trimap, K):
         K[int(bk_indexes[i])] = labels_bk[i]
     # print (np.unique(K))
     # for testing purpose
-    for i in range(l*m):
+    for i in range(l * m):
         if (K[i] == 1):
             img2d[i] = [1, 1, 1]
         elif (K[i] == 0):
@@ -69,15 +70,57 @@ def GMM(img, trimap, K):
     # print(im)
     io.imshow(im)
     io.show()
-    # means_,covariances_
-    return gmm_fr.means_, gmm_fr.covariances_, gmm_bk.means_, gmm_bk.covariances_
+    # weights, means, covariances
+    weights_per_alpha = np.array([gmm_bk.weights_, gmm_fr.weights_])
+    means_per_alpha = np.array([gmm_bk.means_, gmm_fr.means_])
+    covariances_per_alpha = np.array([gmm_bk.covariances_, gmm_fr.covariances_])
+    return weights_per_alpha, means_per_alpha, covariances_per_alpha
+
+
+# bg is a boolean array with bg.shape[0] = img.shape[0] and bg.shape[1] = img.shape[1], bg=0 => pixel is bg, otherwise unknown.
+def GrabCut(img, trimap):
+    l, m, n = img.shape
+    # trimap = np.zeros((l, m))
+    # trimap[bg == 0] = 0  # Background => 0
+    # trimap[bg == 1] = -1  # Everything other than the background is unknown
+    # pi, mu, sigma = GMM(img, trimap.reshape(l * m))
+    # D_bias = - np.log(pi) + 0.5 * np.log(np.linalg.det(sigma))
+    # z = np.reshape(img, (l * m, n))
+    pixel_indices = np.reshape(np.arange(0, l * m, 1), (l, m))
+    # print(pixel_indices[0:2, 0:2])
+    # U_n = D_n + V
+    # D_n = D_bias[alpha_n, k_n] + 0.5 * (z_n - mu(alpha_n, k_n)).T * (sigma(alpha_n, k_n))^-1 * (z_n - mu(alpha_n, k_n)
+    G = gt.Graph(directed=False)
+    G.add_vertex(l * m + 2)
+    S = G.vertex(l * m)
+    T = G.vertex(l * m + 1)
+    cap = G.new_edge_property("double")
+    for i in range(l):
+        for j in range(m):
+            current_index = i * m + j
+            current_vertex = G.vertex(current_index)
+            neighbors = pixel_indices[i - 1:i + 2, j - 1:j + 2]
+            if (i > 0) and (j > 0):
+                neighbors = pixel_indices[i - 1:i + 2, j - 1:j + 2]
+            elif (i == 0) and (j > 0):
+                neighbors = pixel_indices[i: i + 2, j - 1: j + 2]
+            elif (i == 0) and (j == 0):
+                neighbors = pixel_indices[i:i + 2, j:j + 2]
+            else:
+                neighbors = pixel_indices[i - 1:i + 2, j - 1:j + 2]
+            neighbors = np.reshape(neighbors, -1)
+            for neighbor_index in neighbors:
+                neighbor_vertex = G.vertex(neighbor_index)
+                e = G.add_edge(current_vertex, neighbor_vertex)
+                cap[e] = current_index * neighbor_index
+    print(cap)
+    return img
 
 
 def main():
-    img = io.imread('face_segmentation/a.png')
-    img = (img.astype(np.float))/255.0
+    img = io.imread('a.png')
+    img = (img.astype(np.float)) / 255.0
     l, m, n = img.shape
-    K = np.zeros((l*m))
     # start with trimap where everything out of the bounding box is 0(background), everything inside is -1(unknown),
     # and no 1s (forground)
     # assuming that foreground is everything in the boundingbox till we start iterating, then we are back to our default def
@@ -87,8 +130,7 @@ def main():
     w = 50
     y = 0
     h = 50
-    trimap[x:x+w, y:y+h] = 1
-    trimap = trimap.reshape(l*m)
+    trimap[x:x + w, y:y + h] = 1
     # print(trimap)
-    GMM(img, trimap, K)
+    GrabCut(img, trimap)
 main()
