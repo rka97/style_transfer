@@ -31,7 +31,7 @@ class App():
         if self.content_image == -1 or self.style_image == -1:
             return
         
-        self.x = mainGui(self.content_image, self.style_image)
+        self.x = main_gui(self.content_image, self.style_image)
         self.output_image = True
         width = self.ui.output_image_view.width()
         height = self.ui.output_image_view.height()
