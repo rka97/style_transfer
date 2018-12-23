@@ -2,7 +2,7 @@ import cv2 as cv2
 from color_transfer.commonfunctions import *
 from color_transfer.color_transfer import *
 from domain_transform.domain_transform import *
-from fast_nearest_neighbor.fast_nearest_neighbor import *
+from pca.pca import *
 from sklearn.feature_extraction.image import extract_patches
 from sklearn.neighbors import NearestNeighbors
 # from sklearn.decomposition import PCA
