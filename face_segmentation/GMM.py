@@ -1,7 +1,9 @@
 import skimage.io as io
+from skimage.color import rgb2gray
 import numpy as np
 from sklearn.mixture import GaussianMixture
 import graph_tool.all as gt
+import cv2
 
 
 def init_GMM(img, trimap):
@@ -67,59 +69,110 @@ def GMM(img, trimap):
     # img2d = img2d*255.0  # need to handle cases where the image is binary...etc
     # img2d.astype(np.uint8)
     im = img2d.reshape(l, m, n)
-    # print(im)
-    io.imshow(im)
-    io.show()
+    # # print(im)
+    # io.imshow(im)
+    # io.show()
     # weights, means, covariances
     weights_per_alpha = np.array([gmm_bk.weights_, gmm_fr.weights_])
     means_per_alpha = np.array([gmm_bk.means_, gmm_fr.means_])
     covariances_per_alpha = np.array([gmm_bk.covariances_, gmm_fr.covariances_])
-    return weights_per_alpha, means_per_alpha, covariances_per_alpha
+    return K, weights_per_alpha, means_per_alpha, covariances_per_alpha
 
 
-# bg is a boolean array with bg.shape[0] = img.shape[0] and bg.shape[1] = img.shape[1], bg=0 => pixel is bg, otherwise unknown.
-def GrabCut(img, trimap):
+def build_energy_function(img, trimap):
+    trimap = trimap.reshape(-1)
+    K, pi, mu, sigma = GMM(img, trimap)
     l, m, n = img.shape
-    # trimap = np.zeros((l, m))
-    # trimap[bg == 0] = 0  # Background => 0
-    # trimap[bg == 1] = -1  # Everything other than the background is unknown
-    # pi, mu, sigma = GMM(img, trimap.reshape(l * m))
-    # D_bias = - np.log(pi) + 0.5 * np.log(np.linalg.det(sigma))
-    # z = np.reshape(img, (l * m, n))
+    trimap = trimap.reshape((l, m))
+    D = np.zeros((2, l, m))
+    inv_sigmas = np.zeros_like(sigma)
+    det_sigmas = np.zeros_like(pi)
+    for i in range(inv_sigmas.shape[0]):
+        for j in range(inv_sigmas.shape[1]):
+            inv_sigmas[i, j] = np.linalg.inv(sigma[i, j])
+            det_sigmas[i, j] = np.linalg.det(sigma[i, j])
+    D_bias = - np.log(pi) + 0.5 * np.log(det_sigmas)
+    for i in range(l):
+        for j in range(m):
+            k = int(K[i * m + j])
+            if trimap[i][j] == 0:
+                alpha = 0
+            else:
+                alpha = 1
+            diff = img[i, j, :] - mu[alpha][k]
+            # print(D_bias[alpha, k], diff.shape, (inv_sigmas[alpha, k]).shape)
+            D[alpha, i, j] = - D_bias[alpha, k] + 0.5 * np.dot(np.dot(np.transpose(diff), inv_sigmas[alpha, k]), diff)
+    return D
+
+
+
+def GrabCut(img, trimap):
+    D = build_energy_function(img, trimap)
+    gray_img = rgb2gray(img)
+    flattened_img = gray_img.reshape(-1).astype(np.float32)
+    l, m = gray_img.shape
+    Beta = 0.0
+    for i in range(l * m):
+        for j in range(l * m):
+            Beta += np.power((flattened_img[i] - flattened_img[j]), 2)
+    Beta = l * m / (2 * Beta)
     pixel_indices = np.reshape(np.arange(0, l * m, 1), (l, m))
-    # print(pixel_indices[0:2, 0:2])
     # U_n = D_n + V
     # D_n = D_bias[alpha_n, k_n] + 0.5 * (z_n - mu(alpha_n, k_n)).T * (sigma(alpha_n, k_n))^-1 * (z_n - mu(alpha_n, k_n)
-    G = gt.Graph(directed=False)
+    G = gt.Graph(directed=True)
     G.add_vertex(l * m + 2)
     S = G.vertex(l * m)
     T = G.vertex(l * m + 1)
     cap = G.new_edge_property("double")
+    K = 0
     for i in range(l):
         for j in range(m):
             current_index = i * m + j
             current_vertex = G.vertex(current_index)
-            neighbors = pixel_indices[i - 1:i + 2, j - 1:j + 2]
-            if (i > 0) and (j > 0):
-                neighbors = pixel_indices[i - 1:i + 2, j - 1:j + 2]
-            elif (i == 0) and (j > 0):
-                neighbors = pixel_indices[i: i + 2, j - 1: j + 2]
-            elif (i == 0) and (j == 0):
-                neighbors = pixel_indices[i:i + 2, j:j + 2]
-            else:
-                neighbors = pixel_indices[i - 1:i + 2, j - 1:j + 2]
-            neighbors = np.reshape(neighbors, -1)
-            for neighbor_index in neighbors:
+            neighbors = pixel_indices[max(0, i - 1):i + 2, max(0, j - 1):j + 2]
+            curr_K = 0
+            for neighbor_index in np.nditer(neighbors):
+                if (neighbor_index == current_index):
+                    continue
                 neighbor_vertex = G.vertex(neighbor_index)
+                dist = max(np.power(flattened_img[current_index] - flattened_img[neighbor_index], 2), 0.0001)
+                capacity = (50.0 / np.sqrt(dist)) * np.exp(-1 * Beta * dist)
                 e = G.add_edge(current_vertex, neighbor_vertex)
-                cap[e] = current_index * neighbor_index
-    print(cap)
-    return img
+                cap[e] = capacity
+                curr_K += capacity
+            K = max(K, curr_K)
+    K = K + 1
+    for i in range(l):
+        for j in range(m):
+            current_index = i * m + j
+            current_vertex = G.vertex(current_index)
+            src_edge = G.add_edge(S, current_vertex)
+            dst_edge = G.add_edge(current_vertex, T)
+            if (trimap[i][j] == 0):  # (i, j) is BG.
+                cap[src_edge] = 0
+                cap[dst_edge] = K
+            elif (trimap[i][j] == 1):  # (i, j) is FG.
+                cap[src_edge] = K
+                cap[dst_edge] = 0
+            else:
+                cap[src_edge] = D[0, i, j]
+                cap[dst_edge] = D[1, i, j]
+    res = gt.boykov_kolmogorov_max_flow(G, S, T, cap)
+    part = gt.min_st_cut(G, S, cap, res)
+    alphas = np.zeros(l * m)
+    # max_flow = sum(res[e] for e in tgt.in_edges())
+    for v in G.vertices():
+        if part[v] == 1:
+            vertex_index = int(v)
+            if (vertex_index < l * m):
+                alphas[vertex_index] = 1
+    return alphas
 
 
-def test():
-    img = io.imread('../images/gmm_test.png')
-    img = (img.astype(np.float)) / 255.0
+def test_GrabCut():
+    img = io.imread('../images/emilia2.jpg')
+    img = (img.astype(np.float))
+    img = cv2.resize(img, (200, 200)) / 255.0
     l, m, n = img.shape
     # start with trimap where everything out of the bounding box is 0(background), everything inside is -1(unknown),
     # and no 1s (forground)
@@ -131,5 +184,11 @@ def test():
     y = 0
     h = 50
     trimap[x:x + w, y:y + h] = 1
-    # print(trimap)
-    GrabCut(img, trimap)
+    alphas = GrabCut(rgb2gray(img_r), trimap_r)
+    print(alphas)
+    io.imshow(cv2.resize(alphas, (l, m)))
+    io.show()
+    # alphas = cv2.resize(alphas, (l, m))
+    # show_images([alphas, cv2.resize(alphas, (l, m))])
+
+test_GrabCut()

@@ -33,27 +33,38 @@ def build_gaussian_pyramid(img, L):
     return img_arr
 
 
-def segment_edges(img):
-    E = canny(rgb2gray(img), sigma=2, low_threshold=0.01, high_threshold=0.1)
-    E = dilation(E)
+def segment_edges(img, sigma_c=2, low_threshold=0.1, high_threshold=0.2, sigma_post=2, num_dilation=1):
+    gray_img = rgb2gray(img)
+    gray_img = (gray_img - np.min(gray_img)) / (np.max(gray_img) - np.min(gray_img))
+    E = canny(rgb2gray(img), sigma=sigma_c, low_threshold=low_threshold, high_threshold=high_threshold)
+    for i in range(num_dilation):
+        E = dilation(E)
     show_images([E])
-    return 1.0 * (gaussian(1.0 * E + morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=E, smoothing=1), sigma=2) > 0)
+    return 1.0 * (gaussian(1.0 * E + morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=E, smoothing=1), sigma=sigma_post) > 0)
 
 
 def segment_faces(img):
     face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
     gray_img = (rgb2gray(img) * 255).astype(np.uint8)
-    faces = face_cascade.detectMultiScale(gray_img, 1.25, 5)
+    faces = face_cascade.detectMultiScale(gray_img, 1.3, 5)
     temp_img = (img.copy() * 255).astype(np.uint8)
+    mask = segment_edges(img)
     if len(faces) == 0:
         print("Found no faces. Will Hallucinate.")
         return np.zeros_like(gray_img)
     for (x, y, w, h) in faces:
+        xs = x  # max([x - int(w / 2), 0])
+        ys = y  # max([y - int(h / 2), 0])
+        xe = x + w  # int(3 * w / 2)
+        ye = y + h  # int(3 * h / 2)
+        mask[xs:xe, ys:ye] += dilation(canny(gray_img[xs:xe, ys:ye], sigma=2))
+        # show_images([mask])
+        # mask = 1.0 * (gaussian(1.0 * mask + morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=mask, smoothing=1), sigma=0.5) > 0)
+        # # mask[x:x + w, y:y + h] = segment_edges(gray_img[x:x + w, y:y + h], sigma_c=1, low_threshold=0.1, high_threshold=0.2, num_dilation=0)
+        # show_images([mask])
+        return mask
         bgdModel = np.zeros((1, 65), np.float64)
         fgdModel = np.zeros((1, 65), np.float64)
-        mask = np.zeros_like(gray_img).astype(np.uint8)
-        mask[:] = 2
-        mask[x:x + w, y:y + h] = 3
         cv2.grabCut(temp_img, mask=mask, rect=(x, y, w, h), bgdModel=bgdModel, fgdModel=fgdModel, iterCount=10, mode=cv2.GC_INIT_WITH_MASK)
         mask_min = np.min(mask)
         mask_max = np.max(mask)
@@ -179,9 +190,9 @@ def style_transfer(content, style, segmentation_mask):
 
 
 def main():
-    content = io.imread('images/face_blue.jpg') / 255.0
+    content = io.imread('images/emilia2.jpg') / 255.0
     style = io.imread('images/paper_images/van_gogh.jpg') / 255.0
-    segm_mask = segment_edges(content) * 0.9  # get_segmentation_mask('edge', content, 1.0)
+    segm_mask = edge_segmentation(content, 5, 0.6)
     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
     segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)

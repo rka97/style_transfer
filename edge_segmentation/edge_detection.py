@@ -5,6 +5,7 @@ from .commonfunctions import *
 from numpy import pi, exp, sqrt
 from scipy import ndimage as ndi
 from skimage.draw import polygon
+from skimage.filters import gaussian
 from skimage.filters import rank
 from scipy.spatial import Delaunay
 from numpy.linalg import multi_dot
@@ -72,19 +73,17 @@ def edge_detection(content, n=5, strength_threshold=0.04, coherence_threshold=0.
     return img
 
 
-def edge_segmentation(img, mode=4):
+def edge_segmentation(img, strength_threshold=8, coherence_threshold=0.5, mode=4):
     IM_SIZE = 400
     img = (cv2.resize(img, (IM_SIZE, IM_SIZE))).astype(np.float32)
     root_n = 5
-    edges = edge_detection(img, root_n, strength_threshold=8, coherence_threshold=0.5)  # root_n should be odd number #8-0.5
+    edges = edge_detection(img, root_n, strength_threshold=strength_threshold, coherence_threshold=coherence_threshold)  # root_n should be odd number #8-0.5
     final_image = np.zeros((img.shape[0], img.shape[1]))
     if mode == 0:
         # thresholding edges for convex hull with threshold to remove as much noise as possible
         edges[edges >= 0.8] = 1
         edges[edges < 0.8] = 0
         return convex_hull(edges)
-        final_image[:chull.shape[0], :chull.shape[1]] = chull
-        return final_image
     elif mode == 1:
         # thresholding edges for watershed on edges with low threshold to include as much edges as possible
         edges[edges >= 0.2] = 1
@@ -108,29 +107,21 @@ def edge_segmentation(img, mode=4):
         watershed_cull = chull * watershed_edges_bin[:chull.shape[0], :chull.shape[1]]
         final_image[:watershed_cull.shape[0], :watershed_cull.shape[1]] = watershed_cull
         return final_image
-    elif mode == 3:  # never use this one it just never ends
-        # thresholding edges for convex hull with threshold to remove as much noise as possible
-        edges[edges >= 0.8] = 1
-        edges[edges < 0.8] = 0
-        chull = concave_hull(edges)
-        final_image[:chull.shape[0], :chull.shape[1]] = chull
-        return final_image
+    # elif mode == 3:  # never use this one it just never ends
+    #     # thresholding edges for convex hull with threshold to remove as much noise as possible
+    #     edges[edges >= 0.8] = 1
+    #     edges[edges < 0.8] = 0
+    #     chull = concave_hull(edges)
+    #     final_image[:chull.shape[0], :chull.shape[1]] = chull
+    #     return final_image
     else:
-        show_images([edges])
-        edges[edges != 0] = 1
-        edges = dilation(edges)
-        show_images([edges])
+        E = np.zeros((img.shape[0], img.shape[1]))
+        E[:edges.shape[0], :edges.shape[1]] = edges
         # Feel free to play around with the parameters to see how they impact the result
         # cv = chan_vese(edges, mu=0.1, lambda1=0.06, lambda2=1, tol=1e-3, max_iter=2000,
         #                dt=0.52, init_level_set="checkerboard", extended_output=True)
-        cv = morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=edges, smoothing=1)
-        show_images([edges, cv])
-        image = dilation(cv[0])
-        image = dilation(image)
-        image = dilation(image)
-        image = binary_fill_holes(image)
-        final_image[:image.shape[0], :image.shape[1]] = image
-        return final_image
+        mask = 1.0 * (gaussian(1.0 * E + morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=E, smoothing=1), sigma=5))
+        return mask
 
 
 # -------------------------------------------------------------------------------------
