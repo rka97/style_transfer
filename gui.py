@@ -354,6 +354,7 @@ class App():
 
         mask = mask * mask_constant
         self.mask = mask
+        mask = mask * 255
         mask = mask.astype(np.uint8)
 
         width = self.ui.segmentation_mask_view.width()
