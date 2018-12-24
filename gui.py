@@ -53,10 +53,15 @@ class App():
 
     def transfer(self):
         if self.content_image == -1 or self.style_image == -1:
+            QMessageBox.critical(self.ui.window, 'Error', "Both content and style must be available", QMessageBox.Ok)
             return
 
+        padding_mode = self.ui.padding_mode_combo.currentText()    
+        sigma_s = 15 if self.ui.sigma_s_input.text() == "" else float(self.ui.sigma_s_input.text())
+        sigma_r = 0.17 if self.ui.sigma_r_input.text() == "" else float(self.ui.sigma_r_input.text())
+
         self.get_segmentation_mask()
-        self.x = main_gui(self.content_image, self.style_image, self.mask)
+        self.x = main_gui(self.content_image, self.style_image, self.mask, padding_mode=padding_mode, sigma_r=sigma_r, sigma_s=sigma_s)
         self.output_image = True
         width = self.ui.output_image_view.width()
         height = self.ui.output_image_view.height()
@@ -146,6 +151,8 @@ class App():
     def set_validators(self):
         # general mask parameters
         self.ui.mask_c_input.setValidator(self.float_validator)
+        self.ui.sigma_s_input.setValidator(self.float_validator)
+        self.ui.sigma_r_input.setValidator(self.float_validator)
         # face segmentatin
         self.ui.scale_factor_input.setValidator(self.float_validator)
         self.ui.min_neighbours_input.setValidator(self.uint_validator)

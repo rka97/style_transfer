@@ -130,7 +130,7 @@ def solve_irls(X, X_patches_raw, p_index, style_patches, neighbors, projection_m
     X /= R
 
 
-def style_transfer(content, style, segmentation_mask):
+def style_transfer(content, style, segmentation_mask, sigma_r=0.17, sigma_s=15):
     content_arr = build_gaussian_pyramid(content, LMAX)
     style_arr = build_gaussian_pyramid(style, LMAX)
     segm_arr = build_gaussian_pyramid(segmentation_mask, LMAX)
@@ -195,7 +195,7 @@ def style_transfer(content, style, segmentation_mask):
                 X = color_transfer(X, style)
                 # Step 5: Denoising
                 # Xpden = X.copy()
-                X[:style_L_sx, :style_L_sx, :] = denoise(X[:style_L_sx, :style_L_sx, :], sigma_r=0.17, sigma_s=15)
+                X[:style_L_sx, :style_L_sx, :] = denoise(X[:style_L_sx, :style_L_sx, :], sigma_r=sigma_r, sigma_s=sigma_s)
                 # show_images([Xpden, X])
             X = X[:style_L_sx, :style_L_sx, :]
         # show_images([Xbefore, X])
@@ -225,7 +225,8 @@ def main():
     show_images([X])
 
 
-def main_gui(content_image, style_image, segm_mask):
+def main_gui(content_image, style_image, segm_mask, padding_mode='constant', sigma_r=0.17, sigma_s=15):
+    PADDING_MODE = padding_mode
     content = io.imread(content_image) / 255.0
     style = io.imread(style_image) / 255.0
     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
@@ -234,7 +235,7 @@ def main_gui(content_image, style_image, segm_mask):
     # show_images([content, segm_mask, style])
     content = color_transfer(content, style)
     start = timer()
-    X = style_transfer(content, style, segm_mask)
+    X = style_transfer(content, style, segm_mask, sigma_r=sigma_r, sigma_s=sigma_s)
     end = timer()
     print("Style Transfer took ", end - start, " seconds!")
     X_fixed = X * 255.0
