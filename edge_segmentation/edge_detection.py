@@ -73,7 +73,13 @@ def edge_detection(content, n=5, strength_threshold=0.04, coherence_threshold=0.
     return img
 
 
-def edge_segmentation(img, strength_threshold=8, coherence_threshold=0.5, mode=4):
+def edge_segmentation(
+    img, strength_threshold=8, coherence_threshold=0.5, mode=4,
+    ch_ethreshold=0.8,
+    ws_ethreshold=0.2, ws_mdisk_size=5, ws_mthreshold=20, ws_gdisk_size=2, ws_glevel_threshold=4,
+    cv_ethreshold=0, cv_mu=0.1, cv_lamda_1=0.06, cv_lamda_2=1, cv_tol=1e-3, cv_max_iter=2000, cv_dt=0.52, cv_init_level_set="checkerboard", cv_extended_output=True,
+    mcv_init_level_set="edges", mcv_c1=1.0, mcv_c2=1.0, mcv_max_iter=35, mcv_smoothing=1, mcv_sigma=5
+):
     IM_SIZE = 400
     img = (cv2.resize(img, (IM_SIZE, IM_SIZE))).astype(np.float32)
     root_n = 5
@@ -81,13 +87,15 @@ def edge_segmentation(img, strength_threshold=8, coherence_threshold=0.5, mode=4
     final_image = np.zeros((img.shape[0], img.shape[1]))
     if mode == 0:
         # thresholding edges for convex hull with threshold to remove as much noise as possible
-        edges[edges >= 0.8] = 1
-        edges[edges < 0.8] = 0
-        return convex_hull(edges)
+        edges[edges >= ch_ethreshold] = 1
+        edges[edges < ch_ethreshold] = 0
+        chull = convex_hull(edges)
+        final_image[:chull.shape[0], :chull.shape[1]] = chull
+        return final_image
     elif mode == 1:
         # thresholding edges for watershed on edges with low threshold to include as much edges as possible
-        edges[edges >= 0.2] = 1
-        edges[edges < 0.2] = 0
+        edges[edges >= ws_ethreshold] = 1
+        edges[edges < ws_ethreshold] = 0
         watershed_edges_bin = watershed_edges(edges)
         final_image[:watershed_edges_bin.shape[0], :watershed_edges_bin.shape[1]] = watershed_edges_bin
         return final_image
@@ -96,90 +104,57 @@ def edge_segmentation(img, strength_threshold=8, coherence_threshold=0.5, mode=4
         edge_watershed = edge_chull.copy()
 
         # thresholding edges for convex hull with threshold to remove as much noise as possible
-        edge_chull[edge_chull >= 0.8] = 1
-        edge_chull[edge_chull < 0.8] = 0
+        edge_chull[edge_chull >= ch_ethreshold] = 1
+        edge_chull[edge_chull < ch_ethreshold] = 0
         # thresholding edges for watershed on edges with low threshold to include as much edges as possible
-        edge_watershed[edge_watershed >= 0.2] = 1
-        edge_watershed[edge_watershed < 0.2] = 0
+        edge_watershed[edge_watershed >= ws_ethreshold] = 1
+        edge_watershed[edge_watershed < ws_ethreshold] = 0
 
         chull = convex_hull(edge_chull)
-        watershed_edges_bin = watershed_edges(edge_watershed)
+        watershed_edges_bin = watershed_edges(edge_watershed, ws_mdisk_size, ws_mthreshold, ws_gdisk_size, ws_glevel_threshold)
         watershed_cull = chull * watershed_edges_bin[:chull.shape[0], :chull.shape[1]]
         final_image[:watershed_cull.shape[0], :watershed_cull.shape[1]] = watershed_cull
         return final_image
-    # elif mode == 3:  # never use this one it just never ends
-    #     # thresholding edges for convex hull with threshold to remove as much noise as possible
-    #     edges[edges >= 0.8] = 1
-    #     edges[edges < 0.8] = 0
-    #     chull = concave_hull(edges)
-    #     final_image[:chull.shape[0], :chull.shape[1]] = chull
-    #     return final_image
+    elif mode == 3:
+        # Feel free to play around with the parameters to see how they impact the result
+        edges[edges != cv_ethreshold] = 1
+
+        cv_init_level_set = cv_init_level_set.split(',')
+        cv_init_level = cv_init_level_set[0]
+        if cv_init_level_set[0] == "edges":
+            cv_init_level = edges
+        elif cv_init_level_set[0] == "original gray":
+            cv_init_level = rgb2gray(img)
+            cv_init_level = cv_init_level[:edges.shape[0], :edges.shape[1]]
+        elif cv_init_level_set[0] == "path":
+            cv_init_level = io.imread(cv_init_level_set[1])
+            cv_init_level = (cv2.resize(cv_init_level, (IM_SIZE, IM_SIZE))).astype(np.float32)
+            cv_init_level = rgb2gray(cv_init_level)
+            cv_init_level = cv_init_level[:edges.shape[0], :edges.shape[1]]
+
+        cv = chan_vese(edges, mu=cv_mu, lambda1=cv_lamda_1, lambda2=cv_lamda_2, tol=cv_tol, max_iter=cv_max_iter,
+                       dt=cv_dt, init_level_set=cv_init_level, extended_output=cv_extended_output)
+
+        mask = cv[0]
+        final_image[:mask.shape[0], :mask.shape[1]] = mask
+        return final_image
     else:
         E = np.zeros((img.shape[0], img.shape[1]))
         E[:edges.shape[0], :edges.shape[1]] = edges
-        # Feel free to play around with the parameters to see how they impact the result
-        # cv = chan_vese(edges, mu=0.1, lambda1=0.06, lambda2=1, tol=1e-3, max_iter=2000,
-        #                dt=0.52, init_level_set="checkerboard", extended_output=True)
-        mask = 1.0 * (gaussian(1.0 * E + morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=E, smoothing=1), sigma=5))
+
+        mcv_init_level_set = mcv_init_level_set.split(',')
+        mcv_init_level = mcv_init_level_set[0]
+        if mcv_init_level_set[0] == "edges":
+            mcv_init_level = E
+        elif mcv_init_level_set[0] == "original gray":
+            mcv_init_level = rgb2gray(img)
+        elif mcv_init_level_set[0] == "path":
+            mcv_init_level = io.imread(mcv_init_level_set[1])
+            mcv_init_level = (cv2.resize(mcv_init_level, (IM_SIZE, IM_SIZE))).astype(np.float32)
+            mcv_init_level = rgb2gray(mcv_init_level)
+
+        mask = mcv_c1 * (gaussian(mcv_c2 * E + morphological_chan_vese(rgb2gray(img), iterations=mcv_max_iter, init_level_set=mcv_init_level, smoothing=mcv_smoothing), sigma=mcv_sigma))
         return mask
-
-
-# -------------------------------------------------------------------------------------
-# concave hull using alpha shape algorithm
-# alogrithm was taken from stackoverflow response to question: Calculate bounding polygon of alpha shape from the Delaunay triangulation
-# link to answer stackoverflow post -> https://stackoverflow.com/a/50159452/7293149
-def alpha_shape(points, alpha, only_outer=True):
-    assert points.shape[0] > 3, "Need at least four points"
-
-    def add_edge(edges, i, j):
-        if (i, j) in edges or (j, i) in edges:
-            # already added
-            assert (j, i) in edges, "Can't go twice over same directed edge right?"
-            if only_outer:
-                # if both neighboring triangles are in shape, it's not a boundary edge
-                edges.remove((j, i))
-            return
-        edges.add((i, j))
-
-    tri = Delaunay(points)
-    edges = set()
-    # Loop over triangles:
-    # ia, ib, ic = indices of corner points of the triangle
-    for ia, ib, ic in tri.vertices:
-        pa = points[ia]
-        pb = points[ib]
-        pc = points[ic]
-        # Computing radius of triangle circumcircle
-        # www.mathalino.com/reviewer/derivation-of-formulas/derivation-of-formula-for-radius-of-circumcircle
-        a = np.sqrt((pa[0] - pb[0]) ** 2 + (pa[1] - pb[1]) ** 2)
-        b = np.sqrt((pb[0] - pc[0]) ** 2 + (pb[1] - pc[1]) ** 2)
-        c = np.sqrt((pc[0] - pa[0]) ** 2 + (pc[1] - pa[1]) ** 2)
-        s = (a + b + c) / 2.0
-        area = np.sqrt(s * (s - a) * (s - b) * (s - c))
-        circum_r = a * b * c / (4.0 * area)
-        if circum_r < alpha:
-            add_edge(edges, ia, ib)
-            add_edge(edges, ib, ic)
-            add_edge(edges, ic, ia)
-    return edges
-
-
-def concave_hull(img):
-    image = img.copy()
-    points = []
-    for j in range(image.shape[1]):
-        for i in range(image.shape[0]):
-            if image[i, j] == 1:
-                points.append((j, i))
-
-    points = np.array(points)
-    edges = alpha_shape(points, alpha=1.8, only_outer=True)
-    edges = np.array([edge for edge in edges])
-    r = edges[:, 1]
-    c = edges[:, 0]
-    rr, cc = polygon(r, c)
-    image[rr, cc] = 1
-    return image
 
 
 # -------------------------------------------------------------------------------------
@@ -228,16 +203,16 @@ def convex_hull(img):
 
 # -------------------------------------------------------------------------------------
 # using skimage watershed algorithm with histogram thresholding to remove background regions from image
-def watershed_edges(img):
+def watershed_edges(img, ws_mdisk_size=5, ws_mthreshold=20, ws_gdisk_size=2, ws_glevel_threshold=4):
     image = img.copy()
     image = img_as_ubyte(image)
-    markers = rank.gradient(image, disk(5)) < 20
+    markers = rank.gradient(image, disk(ws_mdisk_size)) < ws_mthreshold
     markers = ndi.label(markers)[0]
-    gradient = rank.gradient(image, disk(2))
+    gradient = rank.gradient(image, disk(ws_gdisk_size))
     labels = watershed(gradient, markers)
     # show_images([image, labels], ["edges", "edges' labels"])
-    labels[labels <= 4] = 1
-    labels[labels > 4] = 0
+    labels[labels <= ws_glevel_threshold] = 1
+    labels[labels > ws_glevel_threshold] = 0
     labels = np.invert(labels)
     labels[labels == -1] = 1
     labels[labels == -2] = 0

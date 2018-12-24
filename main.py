@@ -33,22 +33,40 @@ def build_gaussian_pyramid(img, L):
     return img_arr
 
 
-def segment_edges(img, sigma_c=2, low_threshold=0.1, high_threshold=0.2, sigma_post=2, num_dilation=1):
+def segment_edges(
+    img, sigma_c=2, low_threshold=0.1, high_threshold=0.2, sigma_post=2, num_dilation=1,
+    mcv_c1=1.0, mcv_c2=1.0, mcv_max_iter=35, mcv_smoothing=1, mcv_init_level_set="edges", mcv_threshold=0
+):
     gray_img = rgb2gray(img)
     gray_img = (gray_img - np.min(gray_img)) / (np.max(gray_img) - np.min(gray_img))
     E = canny(rgb2gray(img), sigma=sigma_c, low_threshold=low_threshold, high_threshold=high_threshold)
     for i in range(num_dilation):
         E = dilation(E)
-    show_images([E])
-    return 1.0 * (gaussian(1.0 * E + morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=E, smoothing=1), sigma=sigma_post) > 0)
+    # show_images([E])
+
+    mcv_init_level_set = mcv_init_level_set.split(',')
+    mcv_init_level = mcv_init_level_set[0]
+    if mcv_init_level_set[0] == "edges":
+        mcv_init_level = E
+    elif mcv_init_level_set[0] == "original gray":
+        mcv_init_level = rgb2gray(img)
+    elif mcv_init_level_set[0] == "path":
+        mcv_init_level = io.imread(mcv_init_level_set[1])
+        mcv_init_level = (cv2.resize(mcv_init_level, (IM_SIZE, IM_SIZE))).astype(np.float32)
+        mcv_init_level = rgb2gray(mcv_init_level)
+
+    return mcv_c1 * (gaussian(mcv_c2 * E + morphological_chan_vese(rgb2gray(img), iterations=mcv_max_iter, init_level_set=mcv_init_level, smoothing=mcv_smoothing), sigma=sigma_post) > mcv_threshold)
 
 
-def segment_faces(img):
+def segment_faces(
+    img, scale_factor=1.3, min_neighbours=5, fs_gaussian_sigma=5, fs_dialtion_sigma=2, grab_cut_num_iter=10, model_size=65, grab_cut_mode=cv2.GC_INIT_WITH_MASK,
+    canny_sigma=2, mcv_gaussian_sigma=2, canny_low_threshold=0.1, canny_high_threshold=0.2, num_dialation=1, fs_mcv_c1=1.0, fs_mcv_c2=1.0, fs_mcv_init_level="edges", fs_mcv_num_iter=35, fs_mcv_smoothing=1, fs_mcv_threshold=0
+):
     face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
     gray_img = (rgb2gray(img) * 255).astype(np.uint8)
     faces = face_cascade.detectMultiScale(gray_img, 1.3, 5)
     temp_img = (img.copy() * 255).astype(np.uint8)
-    mask = segment_edges(img)
+    mask = segment_edges(img, canny_sigma, canny_low_threshold, canny_high_threshold, mcv_gaussian_sigma, num_dialation, fs_mcv_c1, fs_mcv_c2, fs_mcv_num_iter, fs_mcv_smoothing, fs_mcv_init_level, fs_mcv_threshold)
     if len(faces) == 0:
         print("Found no faces. Will Hallucinate.")
         return np.zeros_like(gray_img)
@@ -57,19 +75,19 @@ def segment_faces(img):
         ys = y  # max([y - int(h / 2), 0])
         xe = x + w  # int(3 * w / 2)
         ye = y + h  # int(3 * h / 2)
-        mask[xs:xe, ys:ye] += dilation(canny(gray_img[xs:xe, ys:ye], sigma=2))
+        mask[xs:xe, ys:ye] += dilation(canny(gray_img[xs:xe, ys:ye], sigma=fs_dialtion_sigma))
         # show_images([mask])
         # mask = 1.0 * (gaussian(1.0 * mask + morphological_chan_vese(rgb2gray(img), iterations=35, init_level_set=mask, smoothing=1), sigma=0.5) > 0)
         # # mask[x:x + w, y:y + h] = segment_edges(gray_img[x:x + w, y:y + h], sigma_c=1, low_threshold=0.1, high_threshold=0.2, num_dilation=0)
         # show_images([mask])
         return mask
-        bgdModel = np.zeros((1, 65), np.float64)
-        fgdModel = np.zeros((1, 65), np.float64)
-        cv2.grabCut(temp_img, mask=mask, rect=(x, y, w, h), bgdModel=bgdModel, fgdModel=fgdModel, iterCount=10, mode=cv2.GC_INIT_WITH_MASK)
+        bgdModel = np.zeros((1, model_size), np.float64)
+        fgdModel = np.zeros((1, model_size), np.float64)
+        cv2.grabCut(temp_img, mask=mask, rect=(x, y, w, h), bgdModel=model_size, fgdModel=model_size, iterCount=10, mode=grab_cut_mode)
         mask_min = np.min(mask)
         mask_max = np.max(mask)
         mask = (mask - mask_min) / (mask_max - mask_min)
-        return gaussian(mask, 5)
+        return gaussian(mask, fs_gaussian_sigma)
 
 
 def get_segmentation_mask(mode, img=None, c=1.0):
@@ -181,7 +199,7 @@ def style_transfer(content, style, segmentation_mask):
                 X[:style_L_sx, :style_L_sx, :] = denoise(X[:style_L_sx, :style_L_sx, :], sigma_r=0.17, sigma_s=15)
                 # show_images([Xpden, X])
             X = X[:style_L_sx, :style_L_sx, :]
-        show_images([Xbefore, X])
+        # show_images([Xbefore, X])
         # Upscale X
         if (L > 0):
             sizex, sizey, _ = content_arr[L - 1].shape
@@ -208,10 +226,9 @@ def main():
     show_images([X])
 
 
-def main_gui(content_image, style_image):
+def main_gui(content_image, style_image, segm_mask):
     content = io.imread(content_image) / 255.0
     style = io.imread(style_image) / 255.0
-    segm_mask = get_segmentation_mask('edge', content, 0.2)
     content = (cv2.resize(content, (IM_SIZE, IM_SIZE))).astype(np.float32)
     style = (cv2.resize(style, (IM_SIZE, IM_SIZE))).astype(np.float32)
     segm_mask = (cv2.resize(segm_mask, (IM_SIZE, IM_SIZE))).astype(np.float32)
@@ -223,7 +240,6 @@ def main_gui(content_image, style_image):
     print("Style Transfer took ", end - start, " seconds!")
     X_fixed = X * 255.0
     X_fixed = X_fixed.astype(np.uint8)
-    # io.imsave("x.png", X_fixed)
     return X_fixed
 
-main()
+# main()
