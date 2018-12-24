@@ -5,7 +5,6 @@ from domain_transform.domain_transform import *
 from pca.pca import *
 from sklearn.feature_extraction.image import extract_patches
 from sklearn.neighbors import NearestNeighbors
-# from sklearn.decomposition import PCA
 from skimage.filters import gaussian
 from skimage.feature import canny
 from skimage.util import view_as_windows, pad, random_noise
@@ -22,7 +21,7 @@ SAMPLING_GAPS = np.array([28, 18, 8, 5, 3])
 IALG = 10
 IRLS_it = 3
 IRLS_r = 0.8
-PADDING_MODE = 'constant'
+PADDING_MODE = 'edge'
 
 
 def build_gaussian_pyramid(img, L):
