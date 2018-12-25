@@ -56,7 +56,7 @@ class App():
             QMessageBox.critical(self.ui.window, 'Error', "Both content and style must be available", QMessageBox.Ok)
             return
 
-        padding_mode = self.ui.padding_mode_combo.currentText()    
+        padding_mode = self.ui.padding_mode_combo.currentText()
         sigma_s = 15 if self.ui.sigma_s_input.text() == "" else float(self.ui.sigma_s_input.text())
         sigma_r = 0.17 if self.ui.sigma_r_input.text() == "" else float(self.ui.sigma_r_input.text())
 
@@ -216,7 +216,7 @@ class App():
     def save_file_name_dialog(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        fileName, _ = QFileDialog.getSaveFileName(self.ui.window, "QFileDialog.getSaveFileName()", "","Images (*.png *.xpm *.jpg *.jepg)", options=options)
+        fileName, _ = QFileDialog.getSaveFileName(self.ui.window, "QFileDialog.getSaveFileName()", "", "Images (*.png *.xpm *.jpg *.jepg)", options=options)
         if fileName:
             return fileName
         else:
@@ -340,7 +340,7 @@ class App():
             model_size = 65 if self.ui.model_size_input.text() == "" else int(self.ui.model_size_input.text())
             fs_dialtion_sigma = 2 if self.ui.fs_dialation_sigma_input.text() == "" else float(self.ui.fs_dialation_sigma_input.text())
 
-            mask = segment_faces(
+            mask = face_segmentation(
                 self.c, scale_factor, min_neighbours, fs_gaussian_sigma, fs_dialtion_sigma, grab_cut_num_iter, model_size, self.grab_cut_mode,
                 canny_sigma, mcv_gaussian_sigma, canny_low_threshold, canny_high_threshold, num_dialation, fs_mcv_c1, fs_mcv_c2, self.fs_morphological_chan_vese_init_level, fs_mcv_num_iter, fs_mcv_smoothing, fs_mcv_threshold
             )
