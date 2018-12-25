@@ -173,7 +173,7 @@ class App():
 
         # edge segmentation
         self.ui.edge_strength_input.setValidator(self.float_validator)
-        self.ui.edge_coherance_input.setValidator(self.float_validator)
+        self.ui.edge_coherence_input.setValidator(self.float_validator)
         # convex hull
         self.ui.ch_ethreshold_input.setValidator(self.float_validator)
         # watershed
@@ -250,14 +250,14 @@ class App():
         self.ui.style_image_view.setPixmap(image)
         self.style_image = image_file
 
-    def convex_hull_mask(self, edge_strength, edge_coherance):
+    def convex_hull_mask(self, edge_strength, edge_coherence):
         ch_ethreshold = 0.8 if self.ui.ch_ethreshold_input.text() == "" else float(self.ui.ch_ethreshold_input.text())
         return edge_segmentation(
-            self.c, mode=0, strength_threshold=edge_strength, coherence_threshold=edge_coherance,
+            self.c, mode=0, strength_threshold=edge_strength, coherence_threshold=edge_coherence,
             ch_ethreshold=ch_ethreshold
         )
 
-    def watershed_mask(self, edge_strength, edge_coherance):
+    def watershed_mask(self, edge_strength, edge_coherence):
         ws_ethreshold = 0.2 if self.ui.ws_ethreshold_input.text() == "" else float(self.ui.ws_ethreshold_input.text())
         ws_mdisk_size = 5 if self.ui.ws_mdisk_size_input.text() == "" else int(self.ui.ws_mdisk_size_input.text())
         ws_mthreshold = 20 if self.ui.ws_mthreshold_input.text() == "" else int(self.ui.ws_mthreshold_input.text())
@@ -265,11 +265,11 @@ class App():
         ws_glevel_threshold = 4 if self.ui.ws_glevel_threshold_input.text() == "" else int(self.ui.ws_glevel_threshold_input.text())
 
         return edge_segmentation(
-            self.c, mode=1, strength_threshold=edge_strength, coherence_threshold=edge_coherance,
+            self.c, mode=1, strength_threshold=edge_strength, coherence_threshold=edge_coherence,
             ws_ethreshold=ws_ethreshold, ws_mdisk_size=ws_mdisk_size, ws_mthreshold=ws_mthreshold, ws_gdisk_size=ws_gdisk_size, ws_glevel_threshold=ws_glevel_threshold
         )
 
-    def convex_hull_watershed_mask(self, edge_strength, edge_coherance):
+    def convex_hull_watershed_mask(self, edge_strength, edge_coherence):
         ch_ethreshold = 0.8 if self.ui.ch_ethreshold_input.text() == "" else float(self.ui.ch_ethreshold_input.text())
         ws_ethreshold = 0.2 if self.ui.ws_ethreshold_input.text() == "" else float(self.ui.ws_ethreshold_input.text())
         ws_mdisk_size = 5 if self.ui.ws_mdisk_size_input.text() == "" else int(self.ui.ws_mdisk_size_input.text())
@@ -278,12 +278,12 @@ class App():
         ws_glevel_threshold = 4 if self.ui.ws_glevel_threshold_input.text() == "" else int(self.ui.ws_glevel_threshold_input.text())
 
         return edge_segmentation(
-            self.c, mode=2, strength_threshold=edge_strength, coherence_threshold=edge_coherance,
+            self.c, mode=2, strength_threshold=edge_strength, coherence_threshold=edge_coherence,
             ch_ethreshold=ch_ethreshold,
             ws_ethreshold=ws_ethreshold, ws_mdisk_size=ws_mdisk_size, ws_mthreshold=ws_mthreshold, ws_gdisk_size=ws_gdisk_size, ws_glevel_threshold=ws_glevel_threshold
         )
 
-    def chan_vese_mask(self, edge_strength, edge_coherance):
+    def chan_vese_mask(self, edge_strength, edge_coherence):
         cv_ethreshold = 0 if self.ui.cv_ethreshold_input.text() == "" else float(self.ui.cv_ethreshold_input.text())
         cv_mu = 0.1 if self.ui.cv_mu_input.text() == "" else float(self.ui.cv_mu_input.text())
         cv_lamda_1 = 0.06 if self.ui.cv_lamda_1_imput.text() == "" else float(self.ui.cv_lamda_1_imput.text())
@@ -298,7 +298,7 @@ class App():
             cv_ethreshold=cv_ethreshold, cv_mu=cv_mu, cv_lamda_1=cv_lamda_1, cv_lamda_2=cv_lamda_2, cv_tol=cv_tol, cv_max_iter=cv_max_iter, cv_dt=cv_dt, cv_init_level_set=cv_init_level_set
         )
 
-    def morphological_chan_vese_mask(self, edge_strength, edge_coherance):
+    def morphological_chan_vese_mask(self, edge_strength, edge_coherence):
         mcv_init_level_set = self.morphological_chan_vese_init_level
         mcv_c1 = 1.0 if self.ui.mcv_c1_input.text() == "" else float(self.ui.mcv_c1_input.text())
         mcv_c2 = 1.0 if self.ui.mcv_c2_input.text() == "" else float(self.ui.mcv_c2_input.text())
@@ -307,7 +307,7 @@ class App():
         mcv_sigma = 5 if self.ui.mcv_gaussian_sigma_input.text() == "" else float(self.ui.mcv_gaussian_sigma_input.text())
 
         return edge_segmentation(
-            self.c, strength_threshold=edge_strength, coherence_threshold=edge_coherance,
+            self.c, strength_threshold=edge_strength, coherence_threshold=edge_coherence,
             mcv_c1=mcv_c1, mcv_c2=mcv_c2, mcv_init_level_set=mcv_init_level_set, mcv_max_iter=mcv_max_iter, mcv_smoothing=mcv_smoothing, mcv_sigma=mcv_sigma
         )
 
@@ -346,17 +346,17 @@ class App():
         elif mode == 2:
             seg_mode = self.ui.edge_seg_algos.currentIndex()
             edge_strength = 8 if self.ui.edge_strength_input.text() == "" else float(self.ui.edge_strength_input.text())
-            edge_coherance = 0.5 if self.ui.edge_coherance_input.text() == "" else float(self.ui.edge_coherance_input.text())
+            edge_coherence = 0.5 if self.ui.edge_coherence_input.text() == "" else float(self.ui.edge_coherence_input.text())
             if seg_mode == 0:
-                mask = self.convex_hull_mask(edge_strength, edge_coherance)
+                mask = self.convex_hull_mask(edge_strength, edge_coherence)
             elif seg_mode == 1:
-                mask = self.watershed_mask(edge_strength, edge_coherance)
+                mask = self.watershed_mask(edge_strength, edge_coherence)
             elif seg_mode == 2:
-                mask = self.convex_hull_watershed_mask(edge_strength, edge_coherance)
+                mask = self.convex_hull_watershed_mask(edge_strength, edge_coherence)
             elif seg_mode == 3:
-                mask = self.chan_vese_mask(edge_strength, edge_coherance)
+                mask = self.chan_vese_mask(edge_strength, edge_coherence)
             elif seg_mode == 4:
-                mask = self.morphological_chan_vese_mask(edge_strength, edge_coherance)
+                mask = self.morphological_chan_vese_mask(edge_strength, edge_coherence)
 
         mask = mask * mask_constant
         self.mask = mask
