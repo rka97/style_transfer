@@ -94,6 +94,7 @@ def style_transfer(content, style, segmentation_mask, sigma_r=0.17, sigma_s=15):
         for n in range(PATCH_SIZES.size):  # over patch size n
             p_size = PATCH_SIZES[n]
             print('Patch Size', p_size)
+            npatchx = int((style_L_sx - p_size) / SAMPLING_GAPS[n] + 1)	
             # The images are padded to avoid side artifacts.
             padding = p_size - (style_L_sx - npatchx * SAMPLING_GAPS[n])
             padding_arr = ((0, padding), (0, padding), (0, 0))
