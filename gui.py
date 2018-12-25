@@ -292,11 +292,10 @@ class App():
         cv_max_iter = 2000 if self.ui.cv_max_iter_input.text() == "" else int(self.ui.cv_max_iter_input.text())
         cv_dt = 0.52 if self.ui.cv_dt_input.text() == "" else float(self.ui.cv_dt_input.text())
         cv_init_level_set = self.chan_vese_init_level
-        cv_extended_output = False if self.ui.cv_extended_output_check.checkState() == 0 else True
 
         return edge_segmentation(
-            self.c, mode=3, strength_threshold=edge_strength, coherence_threshold=edge_coherence,
-            cv_ethreshold=cv_ethreshold, cv_mu=cv_mu, cv_lamda_1=cv_lamda_1, cv_lamda_2=cv_lamda_2, cv_tol=cv_tol, cv_max_iter=cv_max_iter, cv_dt=cv_dt, cv_init_level_set=cv_init_level_set, cv_extended_output=cv_extended_output
+            self.c, mode=3, strength_threshold=edge_strength, coherence_threshold=edge_coherance,
+            cv_ethreshold=cv_ethreshold, cv_mu=cv_mu, cv_lamda_1=cv_lamda_1, cv_lamda_2=cv_lamda_2, cv_tol=cv_tol, cv_max_iter=cv_max_iter, cv_dt=cv_dt, cv_init_level_set=cv_init_level_set
         )
 
     def morphological_chan_vese_mask(self, edge_strength, edge_coherence):

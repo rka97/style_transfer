@@ -77,7 +77,7 @@ def edge_segmentation(
     img, strength_threshold=8, coherence_threshold=0.5, mode=4,
     ch_ethreshold=0.8,
     ws_ethreshold=0.2, ws_mdisk_size=5, ws_mthreshold=20, ws_gdisk_size=2, ws_glevel_threshold=4,
-    cv_ethreshold=0, cv_mu=0.1, cv_lamda_1=0.06, cv_lamda_2=1, cv_tol=1e-3, cv_max_iter=2000, cv_dt=0.52, cv_init_level_set="checkerboard", cv_extended_output=True,
+    cv_ethreshold=0, cv_mu=0.1, cv_lamda_1=0.06, cv_lamda_2=1, cv_tol=1e-3, cv_max_iter=2000, cv_dt=0.52, cv_init_level_set="checkerboard",
     mcv_init_level_set="edges", mcv_c1=1.0, mcv_c2=1.0, mcv_max_iter=35, mcv_smoothing=1, mcv_sigma=5
 ):
     IM_SIZE = 400
@@ -133,9 +133,9 @@ def edge_segmentation(
             cv_init_level = cv_init_level[:edges.shape[0], :edges.shape[1]]
 
         cv = chan_vese(edges, mu=cv_mu, lambda1=cv_lamda_1, lambda2=cv_lamda_2, tol=cv_tol, max_iter=cv_max_iter,
-                       dt=cv_dt, init_level_set=cv_init_level, extended_output=cv_extended_output)
+                       dt=cv_dt, init_level_set=cv_init_level)
 
-        mask = cv[0]
+        mask = cv
         final_image[:mask.shape[0], :mask.shape[1]] = mask
         return final_image
     else:
